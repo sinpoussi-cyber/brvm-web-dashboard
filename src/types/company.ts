@@ -31,3 +31,22 @@ export interface Sector {
   sector: string;
   company_count: number;
 }
+
+// Types pour les sociétés comparables
+export interface ComparableCompany {
+  symbol: string;
+  name: string;
+  sector: string;
+  current_price: number;
+  change_percent: number;
+  volume?: number;
+  mm_decision?: string;
+  rsi_decision?: string;
+  similarity_score: number;
+}
+
+export interface ComparableCompaniesResponse {
+  symbol: string;
+  sector: string;
+  comparable_companies: ComparableCompany[];
+}
