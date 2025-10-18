@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { getCompanies } from '../api/companies';
-import type { CompanyDetail } from '@/types/api';
+import { getCompanies, type CompanyDetail } from '../api/companies';
 
 export const useCompanies = () => {
   const [companies, setCompanies] = useState<CompanyDetail[]>([]);
