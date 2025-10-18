@@ -35,3 +35,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# NOTE: package-lock.json should NOT be in .gitignore
+# We want it versioned for consistent builds
