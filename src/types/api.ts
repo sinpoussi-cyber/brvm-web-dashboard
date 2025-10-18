@@ -54,27 +54,14 @@ export interface User {
   created_at: string;
 }
 
-// Companies - TYPES AJOUTÉS
-export interface Company {
-  id: number;
-  symbol: string;
-  name: string;
-  sector: string | null;
-  created_at: string;
-}
-
-export interface CompanyDetail extends Company {
-  current_price: number | null;
-  price_change: number | null;
-  price_change_percent: number | null;
-  volume: number | null;
-  market_cap: number | null;
-}
-
-export interface Sector {
-  sector: string;
-  company_count: number;
-}
+// Re-export company types from company.ts for backward compatibility
+export type {
+  Company,
+  CompanyDetail,
+  Sector,
+  ComparableCompany,
+  ComparableCompaniesResponse,
+} from './company';
 
 // Market Data
 export interface PriceData {
@@ -168,25 +155,6 @@ export interface SectorPerformance {
 export interface SectorPerformanceResponse {
   period_days: number;
   sectors: SectorPerformance[];
-}
-
-// Comparable Companies
-export interface ComparableCompany {
-  symbol: string;
-  name: string;
-  sector: string;
-  current_price: number;
-  change_percent: number;
-  volume?: number;
-  mm_decision?: string;
-  rsi_decision?: string;
-  similarity_score: number;
-}
-
-export interface ComparableCompaniesResponse {
-  symbol: string;
-  sector: string;
-  comparable_companies: ComparableCompany[];
 }
 
 // User Preferences
