@@ -4,7 +4,7 @@
 
 import apiClient, { handleApiError } from './client';
 
-// Types définis localement pour éviter les problèmes d'import
+// Types définis localement pour éviter les problèmes de cache
 interface Company {
   id: number;
   symbol: string;
