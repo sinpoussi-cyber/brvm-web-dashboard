@@ -54,7 +54,7 @@ export interface User {
   created_at: string;
 }
 
-// Companies
+// Companies - TYPES AJOUTÉS
 export interface Company {
   id: number;
   symbol: string;
