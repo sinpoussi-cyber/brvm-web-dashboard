@@ -1,7 +1,3 @@
-// ==============================================================================
-// PAGE: Companies - Liste des sociétés cotées
-// ==============================================================================
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -16,30 +12,20 @@ import Link from 'next/link';
 export default function CompaniesPage() {
   const { companies, isLoading, error, fetchCompanies } = useCompanies();
   const [search, setSearch] = useState('');
-  const [selectedSector, setSelectedSector] = useState<string>('');
 
   useEffect(() => {
     fetchCompanies();
-  }, []);
+  }, [fetchCompanies]);
 
-  // Filtrer les sociétés
-  const filteredCompanies = companies.filter(company => {
-    const matchesSearch = 
-      company.symbol.toLowerCase().includes(search.toLowerCase()) ||
-      company.name.toLowerCase().includes(search.toLowerCase());
-    
-    const matchesSector = !selectedSector || company.sector === selectedSector;
-    
-    return matchesSearch && matchesSector;
-  });
-
-  // Extraire les secteurs uniques
-  const sectors = Array.from(new Set(companies.map(c => c.sector).filter(Boolean)));
+  const filteredCompanies = companies.filter(company =>
+    company.symbol.toLowerCase().includes(search.toLowerCase()) ||
+    company.name.toLowerCase().includes(search.toLowerCase())
+  );
 
   if (error) {
     return (
-      <div className="text-center py-12">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg inline-block">
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg">
           {error}
         </div>
       </div>
@@ -47,20 +33,17 @@ export default function CompaniesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-4xl font-bold text-gray-900">Sociétés Cotées</h1>
-        <p className="text-gray-600 mt-2">
-          Explorez les {companies.length} sociétés cotées à la BRVM
-        </p>
-      </div>
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-4xl font-bold text-gray-900">Sociétés Cotées BRVM</h1>
+          <p className="text-gray-600 mt-2">
+            Explorez les {companies.length} sociétés cotées à la BRVM
+          </p>
+        </div>
 
-      {/* Filtres */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid md:grid-cols-2 gap-4">
-            {/* Recherche */}
+        <Card>
+          <CardContent className="pt-6">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               <Input
@@ -70,38 +53,22 @@ export default function CompaniesPage() {
                 className="pl-10"
               />
             </div>
+            <div className="mt-4 text-sm text-gray-600">
+              {filteredCompanies.length} société(s) trouvée(s)
+            </div>
+          </CardContent>
+        </Card>
 
-            {/* Filtre par secteur */}
-            <select
-              value={selectedSector}
-              onChange={(e) => setSelectedSector(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Tous les secteurs</option>
-              {sectors.map(sector => (
-                <option key={sector} value={sector}>{sector}</option>
-              ))}
-            </select>
+        {isLoading ? (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(9)].map((_, i) => (
+              <Skeleton key={i} className="h-48" />
+            ))}
           </div>
-
-          <div className="mt-4 text-sm text-gray-600">
-            {filteredCompanies.length} société(s) trouvée(s)
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Liste des sociétés */}
-      {isLoading ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[...Array(9)].map((_, i) => (
-            <Skeleton key={i} className="h-48" />
-          ))}
-        </div>
-      ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredCompanies.map((company) => (
-            <Link key={company.symbol} href={`/companies/${company.symbol}`}>
-              <Card className="hover:shadow-xl transition cursor-pointer h-full">
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredCompanies.map((company) => (
+              <Card key={company.symbol} className="hover:shadow-xl transition cursor-pointer">
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div>
@@ -121,7 +88,7 @@ export default function CompaniesPage() {
                   {company.current_price && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Prix actuel</span>
+                        <span className="text-gray-600">Prix</span>
                         <span className="text-2xl font-bold">
                           {company.current_price.toLocaleString('fr-FR')} F
                         </span>
@@ -149,29 +116,20 @@ export default function CompaniesPage() {
                           </div>
                         </div>
                       )}
-
-                      {company.volume && (
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">Volume</span>
-                          <span className="font-medium">
-                            {company.volume.toLocaleString('fr-FR')}
-                          </span>
-                        </div>
-                      )}
                     </div>
                   )}
                 </CardContent>
               </Card>
-            </Link>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
 
-      {!isLoading && filteredCompanies.length === 0 && (
-        <div className="text-center py-12 text-gray-500">
-          Aucune société trouvée
-        </div>
-      )}
+        {!isLoading && filteredCompanies.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            Aucune société trouvée
+          </div>
+        )}
+      </div>
     </div>
   );
 }
