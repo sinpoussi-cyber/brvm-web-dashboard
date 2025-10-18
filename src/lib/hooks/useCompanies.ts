@@ -9,4 +9,18 @@ export const useCompanies = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetch
+  const fetchCompanies = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const data = await getCompanies();
+      setCompanies(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  return { companies, isLoading, error, fetchCompanies };
+};
