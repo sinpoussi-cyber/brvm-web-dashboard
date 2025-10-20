@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+const fs = require('fs');
 const path = require('path');
 
 const nextConfig = {
@@ -13,18 +14,44 @@ const nextConfig = {
     NEXT_PUBLIC_API_VERSION: process.env.NEXT_PUBLIC_API_VERSION || '/api/v1',
   },
   webpack(config) {
+    const tsconfigPath = path.resolve(__dirname, 'tsconfig.json');
+    let tsconfig;
+
+    try {
+      tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, 'utf8'));
+    } catch (error) {
+      // If the tsconfig cannot be read we still want to fall back to a sane alias.
+      tsconfig = {};
+    }
+
+    const aliasesFromPaths = Object.entries(
+      tsconfig?.compilerOptions?.paths ?? {}
+    ).reduce((aliases, [aliasKey, paths]) => {
+      if (!Array.isArray(paths) || paths.length === 0) {
+        return aliases;
+      }
+
+      const sanitizedKey = aliasKey.replace(/\/*$/, '');
+      const target = paths[0]?.replace(/\/*$/, '');
+      if (!sanitizedKey || !target) {
+        return aliases;
+      }
+
+      aliases[sanitizedKey] = path.resolve(__dirname, target);
+      return aliases;
+    }, {});
+
+    const fallbackAliases = {
+      '@': path.resolve(__dirname, 'src'),
+    };
+
     config.resolve = config.resolve || {};
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
-      '@': path.resolve(__dirname, 'src'),
-      '@/components': path.resolve(__dirname, 'src/components'),
-      '@/components/ui': path.resolve(__dirname, 'src/components/ui'),
-      '@/lib': path.resolve(__dirname, 'src/lib'),
-      '@/lib/hooks': path.resolve(__dirname, 'src/lib/hooks'),
-      '@/lib/utils': path.resolve(__dirname, 'src/lib/utils'),
-      '@/lib/api': path.resolve(__dirname, 'src/lib/api'),
-      '@/types': path.resolve(__dirname, 'src/types'),
+      ...fallbackAliases,
+      ...aliasesFromPaths,
     };
+
     return config;
   },
 };
