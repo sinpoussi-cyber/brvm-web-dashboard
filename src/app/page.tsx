@@ -1,134 +1,137 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useCompanies } from '@/lib/hooks/useCompanies';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
-import { Search, Building2, TrendingUp, TrendingDown } from 'lucide-react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { TrendingUp, BarChart3, Shield, Zap } from 'lucide-react';
 
-export default function CompaniesPage() {
-  const { companies, isLoading, error, fetchCompanies } = useCompanies();
-  const [search, setSearch] = useState('');
+export default function HomePage() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
+      {/* Hero Section */}
+      <div className="container mx-auto px-6 py-20">
+        <div className="text-center space-y-8">
+          <h1 className="text-5xl md:text-6xl font-bold text-gray-900">
+            Investissez en bourse <br />
+            <span className="text-primary">simplement</span> avec la BRVM
+          </h1>
 
-  useEffect(() => {
-    fetchCompanies();
-  }, [fetchCompanies]);
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            Plateforme d'investissement moderne pour la Bourse Régionale des Valeurs Mobilières de l'UEMOA
+          </p>
 
-  const filteredCompanies = companies.filter(company =>
-    company.symbol.toLowerCase().includes(search.toLowerCase()) ||
-    company.name.toLowerCase().includes(search.toLowerCase())
-  );
+            <div className="flex gap-4 justify-center">
+            <Link href="/register">
+              <Button size="lg" className="text-lg px-8">
+                Commencer gratuitement
+              </Button>
+            </Link>
+            <Link href="/dashboard">
+              <Button size="lg" variant="outline" className="text-lg px-8">
+                Voir le Dashboard
+              </Button>
+            </Link>
+          </div>
+        </div>
+  
+        {/* Features Grid */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mt-20">
+          <Card className="hover:shadow-lg transition">
+            <CardContent className="pt-6 text-center space-y-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
+                <TrendingUp className="text-primary" size={24} />
+              </div>
+              <h3 className="font-bold text-lg">Données en Temps Réel</h3>
+              <p className="text-gray-600 text-sm">
+                Suivez les cours de 46 sociétés cotées à la BRVM
+              </p>
+            </CardContent>
+          </Card>
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg">
-          {error}
+          <Card className="hover:shadow-lg transition">
+            <CardContent className="pt-6 text-center space-y-4">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                <BarChart3 className="text-green-600" size={24} />
+              </div>
+              <h3 className="font-bold text-lg">Analyses IA</h3>
+              <p className="text-gray-600 text-sm">
+                Prédictions et signaux d'achat/vente automatiques
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition">
+            <CardContent className="pt-6 text-center space-y-4">
+              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto">
+                <Shield className="text-purple-600" size={24} />
+              </div>
+              <h3 className="font-bold text-lg">100% Sécurisé</h3>
+              <p className="text-gray-600 text-sm">
+                Vos données et transactions sont protégées
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition">
+            <CardContent className="pt-6 text-center space-y-4">
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
+                <Zap className="text-orange-600" size={24} />
+              </div>
+              <h3 className="font-bold text-lg">Interface Moderne</h3>
+              <p className="text-gray-600 text-sm">
+                Dashboard intuitif accessible partout
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Stats Section */}
+        <div className="mt-20 bg-white rounded-2xl shadow-lg p-10">
+          <div className="grid md:grid-cols-3 gap-8 text-center">
+            <div>
+              <div className="text-4xl font-bold text-primary">46</div>
+              <div className="text-gray-600 mt-2">Sociétés cotées</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold text-primary">8</div>
+              <div className="text-gray-600 mt-2">Secteurs d'activité</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold text-primary">8,456 Mrd</div>
+              <div className="text-gray-600 mt-2">Capitalisation (FCFA)</div>
+            </div>
+          </div>
+        </div>
+
+        {/* CTA Section */}
+        <div className="mt-20 text-center space-y-6">
+          <h2 className="text-3xl font-bold text-gray-900">Prêt à commencer ?</h2>
+          <p className="text-gray-600">Créez votre compte gratuit en moins de 2 minutes</p>
+          <Link href="/register">
+            <Button size="lg" className="text-lg px-12">
+              S'inscrire maintenant
+            </Button>
+          </Link>
         </div>
       </div>
-    );
-  }
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-4xl font-bold text-gray-900">Sociétés Cotées BRVM</h1>
-          <p className="text-gray-600 mt-2">
-            Explorez les {companies.length} sociétés cotées à la BRVM
+      {/* Footer */}
+      <footer className="border-t mt-20 py-8">
+        <div className="container mx-auto px-6 text-center text-gray-600">
+          <p>© 2025 BRVM Investment Platform. Tous droits réservés.</p>
+          <p className="text-sm mt-2">
+            Données fournies par{' '}
+            <a
+              href="https://brvm-api-xode.onrender.com/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              BRVM API
+            </a>
           </p>
         </div>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <Input
-                placeholder="Rechercher par symbole ou nom..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="mt-4 text-sm text-gray-600">
-              {filteredCompanies.length} société(s) trouvée(s)
-            </div>
-          </CardContent>
-        </Card>
-
-        {isLoading ? (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(9)].map((_, i) => (
-              <Skeleton key={i} className="h-48" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredCompanies.map((company) => (
-              <Card key={company.symbol} className="hover:shadow-xl transition cursor-pointer">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-xl">{company.symbol}</CardTitle>
-                      <p className="text-sm text-gray-600 mt-1">{company.name}</p>
-                    </div>
-                    <Building2 className="text-blue-600" size={24} />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {company.sector && (
-                    <Badge variant="secondary" className="mb-3">
-                      {company.sector}
-                    </Badge>
-                  )}
-
-                  {company.current_price && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Prix</span>
-                        <span className="text-2xl font-bold">
-                          {company.current_price.toLocaleString('fr-FR')} F
-                        </span>
-                      </div>
-
-                      {company.price_change_percent !== null && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-600">Variation</span>
-                          <div className="flex items-center gap-2">
-                            {company.price_change_percent >= 0 ? (
-                              <>
-                                <TrendingUp size={16} className="text-green-600" />
-                                <Badge variant="success">
-                                  +{company.price_change_percent.toFixed(2)}%
-                                </Badge>
-                              </>
-                            ) : (
-                              <>
-                                <TrendingDown size={16} className="text-red-600" />
-                                <Badge variant="destructive">
-                                  {company.price_change_percent.toFixed(2)}%
-                                </Badge>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {!isLoading && filteredCompanies.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            Aucune société trouvée
-          </div>
-        )}
-      </div>
+      </footer>
     </div>
   );
 }
