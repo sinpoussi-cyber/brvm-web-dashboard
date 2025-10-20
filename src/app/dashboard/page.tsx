@@ -3,7 +3,15 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, TrendingDown, Activity, DollarSign } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  DollarSign,
+  AlertCircle,
+  RefreshCw,
+} from 'lucide-react';
 import { getTopGainers, getTopLosers } from '@/lib/api/market';
 import type { TopCompany } from '@/types/api';
 
@@ -49,40 +57,116 @@ function MarketOverview() {
     </div>
   );
 }
+function LoadingCard({ title, icon: Icon }: { title: string; icon: typeof TrendingUp }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Icon size={20} className="text-muted-foreground" />
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+          <span className="ml-3 text-gray-500">Chargement des données...</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-// Composant Top Gainers
+function ErrorCard({
+  title,
+  icon: Icon,
+  message,
+  onRetry,
+}: {
+  title: string;
+  icon: typeof TrendingUp;
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Icon size={20} className="text-muted-foreground" />
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-center py-6 space-y-4">
+          <AlertCircle className="mx-auto text-red-500" size={32} />
+          <p className="text-red-600 text-sm">{message}</p>
+          <Button onClick={onRetry} variant="outline" size="sm" className="gap-2">
+            <RefreshCw size={16} />
+            Réessayer
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyCard({ title, icon: Icon, onRetry }: {
+  title: string;
+  icon: typeof TrendingUp;
+  onRetry: () => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Icon size={20} className="text-muted-foreground" />
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-center py-6 text-gray-500 space-y-4">
+          <p>Aucune donnée disponible</p>
+          <Button onClick={onRetry} variant="outline" size="sm" className="gap-2">
+            <RefreshCw size={16} />
+            Actualiser
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function TopGainers() {
   const [gainers, setGainers] = useState<TopCompany[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchGainers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getTopGainers(5);
+      setGainers(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur de chargement');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchGainers = async () => {
-      try {
-        const data = await getTopGainers(5);
-        setGainers(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchGainers();
+        fetchGainers();
   }, []);
 
   if (loading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="text-green-600" size={20} />
-            Top Gainers
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-gray-500">Chargement...</p>
-        </CardContent>
-      </Card>
-    );
+    return <LoadingCard title="Top Gainers" icon={TrendingUp} />;
+  }
+
+  if (error) {
+    return <ErrorCard title="Top Gainers" icon={TrendingUp} message={error} onRetry={fetchGainers} />;
+  }
+
+  if (gainers.length === 0) {
+    return <EmptyCard title="Top Gainers" icon={TrendingUp} onRetry={fetchGainers} />;
   }
 
   return (
@@ -94,65 +178,59 @@ function TopGainers() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {gainers.length === 0 ? (
-          <p className="text-gray-500">Aucune donnée disponible</p>
-        ) : (
-          <div className="space-y-3">
-            {gainers.map((company) => (
-              <div
-                key={company.symbol}
-                className="flex items-center justify-between p-3 bg-green-50 rounded-lg"
-              >
-                <div>
-                  <p className="font-semibold">{company.symbol}</p>
-                  <p className="text-sm text-gray-600">{company.name}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold">{company.current_price.toLocaleString()} F</p>
-                  <Badge variant="success">+{company.change_percent.toFixed(2)}%</Badge>
-                </div>
+         <div className="space-y-3">
+          {gainers.map((company) => (
+            <div
+              key={company.symbol}
+              className="flex items-center justify-between p-3 bg-green-50 rounded-lg hover:bg-green-100 transition"
+            >
+              <div>
+                <p className="font-semibold">{company.symbol}</p>
+                <p className="text-sm text-gray-600">{company.name}</p>
               </div>
-            ))}
-          </div>
-        )}
+              <div className="text-right">
+                <p className="font-bold">{company.current_price.toLocaleString()} F</p>
+                <Badge variant="success">+{company.change_percent.toFixed(2)}%</Badge>
+              </div>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
 }
-
-// Composant Top Losers
 function TopLosers() {
   const [losers, setLosers] = useState<TopCompany[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchLosers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getTopLosers(5);
+      setLosers(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur de chargement');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchLosers = async () => {
-      try {
-        const data = await getTopLosers(5);
-        setLosers(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchLosers();
   }, []);
 
   if (loading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingDown className="text-red-600" size={20} />
-            Top Losers
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-gray-500">Chargement...</p>
-        </CardContent>
-      </Card>
-    );
+     return <LoadingCard title="Top Losers" icon={TrendingDown} />;
+  }
+
+  if (error) {
+    return <ErrorCard title="Top Losers" icon={TrendingDown} message={error} onRetry={fetchLosers} />;
+  }
+
+  if (losers.length === 0) {
+    return <EmptyCard title="Top Losers" icon={TrendingDown} onRetry={fetchLosers} />;
   }
 
   return (
@@ -164,48 +242,62 @@ function TopLosers() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {losers.length === 0 ? (
-          <p className="text-gray-500">Aucune donnée disponible</p>
-        ) : (
-          <div className="space-y-3">
-            {losers.map((company) => (
-              <div
-                key={company.symbol}
-                className="flex items-center justify-between p-3 bg-red-50 rounded-lg"
-              >
-                <div>
-                  <p className="font-semibold">{company.symbol}</p>
-                  <p className="text-sm text-gray-600">{company.name}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold">{company.current_price.toLocaleString()} F</p>
-                  <Badge variant="destructive">{company.change_percent.toFixed(2)}%</Badge>
-                </div>
+        <div className="space-y-3">
+          {losers.map((company) => (
+            <div
+              key={company.symbol}
+              className="flex items-center justify-between p-3 bg-red-50 rounded-lg hover:bg-red-100 transition"
+            >
+              <div>
+                <p className="font-semibold">{company.symbol}</p>
+                <p className="text-sm text-gray-600">{company.name}</p>
               </div>
-            ))}
-          </div>
-        )}
+              <div className="text-right">
+                <p className="font-bold">{company.current_price.toLocaleString()} F</p>
+                <Badge variant="destructive">{company.change_percent.toFixed(2)}%</Badge>
+              </div>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
 }
-
-// Page principale
 export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-4xl font-bold text-gray-900">Tableau de bord</h1>
-          <p className="text-gray-600 mt-2">Vue d'ensemble du marché BRVM</p>
+         <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900">Tableau de bord</h1>
+            <p className="text-gray-600 mt-2">Vue d'ensemble du marché BRVM</p>
+          </div>
+          <div className="text-sm text-gray-500">
+            API: {process.env.NEXT_PUBLIC_API_URL || 'Non configuré'}
+          </div>
         </div>
-        
-        <MarketOverview />
+
+          <MarketOverview />
         
         <div className="grid md:grid-cols-2 gap-6">
           <TopGainers />
           <TopLosers />
         </div>
+
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="text-blue-600 mt-0.5" size={20} />
+              <div className="text-sm text-blue-900">
+                <p className="font-semibold mb-1">API Backend hébergée sur Render (Free Tier)</p>
+                <p className="text-blue-700">
+                  Le premier chargement peut prendre 30-60 secondes si l'API était inactive. Cliquez sur "Réessayer" si les données
+                  ne se chargent pas immédiatement.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
