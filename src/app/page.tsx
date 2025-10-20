@@ -20,7 +20,7 @@ export default function HomePage() {
             Plateforme d'investissement moderne pour la Bourse Régionale des Valeurs Mobilières de l'UEMOA
           </p>
 
-            <div className="flex gap-4 justify-center">
+          <div className="flex gap-4 justify-center">
             <Link href="/register">
               <Button size="lg" className="text-lg px-8">
                 Commencer gratuitement
@@ -33,7 +33,7 @@ export default function HomePage() {
             </Link>
           </div>
         </div>
-  
+
         {/* Features Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mt-20">
           <Card className="hover:shadow-lg transition">
