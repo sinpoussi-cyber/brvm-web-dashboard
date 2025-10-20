@@ -1,12 +1,16 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#2563eb',
+};
 
 export const metadata: Metadata = {
   title: 'BRVM Investment Platform',
   description: 'Plateforme d\'investissement en bourse pour l\'UEMOA',
-  viewport: 'width=device-width, initial-scale=1',
-  themeColor: '#2563eb',
-};
+  };
 
 export default function RootLayout({
   children,
