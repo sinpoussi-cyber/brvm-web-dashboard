@@ -7,6 +7,45 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://brvm-api-xode.onrender.com';
 const API_VERSION = process.env.NEXT_PUBLIC_API_VERSION || '/api/v1';
 
+const isBrowser = typeof window !== 'undefined';
+
+const safeStorage = {
+  get(key: string) {
+    if (!isBrowser) {
+      return null;
+    }
+
+    try {
+      return window.localStorage.getItem(key);
+    } catch (error) {
+      console.warn(`[apiClient] Impossible de lire ${key} depuis localStorage`, error);
+      return null;
+    }
+  },
+  set(key: string, value: string) {
+    if (!isBrowser) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (error) {
+      console.warn(`[apiClient] Impossible d'écrire ${key} dans localStorage`, error);
+    }
+  },
+  remove(key: string) {
+    if (!isBrowser) {
+      return;
+    }
+
+    try {
+      window.localStorage.removeItem(key);
+    } catch (error) {
+      console.warn(`[apiClient] Impossible de supprimer ${key} de localStorage`, error);
+    }
+  },
+};
+
 // Créer l'instance Axios
 const apiClient = axios.create({
   baseURL: `${API_URL}${API_VERSION}`,
@@ -19,17 +58,15 @@ const apiClient = axios.create({
 // Intercepteur de requêtes (ajouter le token)
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('access_token');
-    
+    const token = safeStorage.get('access_token');
+
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    
+
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Intercepteur de réponses (gérer les erreurs)
@@ -39,21 +76,24 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     // Si erreur 401 et pas déjà tenté de rafraîchir
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (isBrowser && error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        
+        const refreshToken = safeStorage.get('refresh_token');
+
         if (refreshToken) {
           const response = await axios.post(`${API_URL}${API_VERSION}/auth/refresh`, {
             refresh_token: refreshToken,
           });
 
-          const { access_token, refresh_token: newRefreshToken } = response.data;
+          const { access_token, refresh_token: newRefreshToken } = response.data as {
+            access_token: string;
+            refresh_token: string;
+          };
 
-          localStorage.setItem('access_token', access_token);
-          localStorage.setItem('refresh_token', newRefreshToken);
+          safeStorage.set('access_token', access_token);
+          safeStorage.set('refresh_token', newRefreshToken);
 
           if (originalRequest.headers) {
             originalRequest.headers.Authorization = `Bearer ${access_token}`;
@@ -62,10 +102,14 @@ apiClient.interceptors.response.use(
           return apiClient(originalRequest);
         }
       } catch (refreshError) {
-        // Échec du rafraîchissement, déconnecter l'utilisateur
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
+        // Échec du rafraîchissement, déconnecter l'utilisateur côté client uniquement
+        safeStorage.remove('access_token');
+        safeStorage.remove('refresh_token');
+
+        if (isBrowser) {
+          window.location.href = '/login';
+        }
+
         return Promise.reject(refreshError);
       }
     }
