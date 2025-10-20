@@ -3,11 +3,8 @@
 // ==============================================================================
 
 import apiClient, { handleApiError } from './client';
-import type { 
-  CompanyDetail, 
-  Sector, 
-  ComparableCompaniesResponse 
-} from '@/types/api';
+import { unwrapApiResponse } from './helpers';
+import type { CompanyDetail, Sector, ComparableCompaniesResponse } from '@/types/api';
 
 // Re-export types for convenience
 export type { 
@@ -23,8 +20,8 @@ export const getCompanies = async (params?: {
   search?: string;
 }): Promise<CompanyDetail[]> => {
   try {
-    const response = await apiClient.get<CompanyDetail[]>('/companies/', { params });
-    return response.data;
+    const response = await apiClient.get('/companies/', { params });
+    return unwrapApiResponse<CompanyDetail[]>(response.data) ?? [];
   } catch (error) {
     throw new Error(handleApiError(error));
   }
@@ -33,8 +30,14 @@ export const getCompanies = async (params?: {
 // Récupérer une société par symbole
 export const getCompany = async (symbol: string): Promise<CompanyDetail> => {
   try {
-    const response = await apiClient.get<CompanyDetail>(`/companies/${symbol}`);
-    return response.data;
+    const response = await apiClient.get(`/companies/${symbol}`);
+    const company = unwrapApiResponse<CompanyDetail>(response.data);
+
+    if (!company) {
+      throw new Error('Réponse invalide reçue pour la société demandée.');
+    }
+
+    return company;
   } catch (error) {
     throw new Error(handleApiError(error));
   }
@@ -43,8 +46,8 @@ export const getCompany = async (symbol: string): Promise<CompanyDetail> => {
 // Récupérer les secteurs
 export const getSectors = async (): Promise<Sector[]> => {
   try {
-    const response = await apiClient.get<Sector[]>('/companies/sectors/list');
-    return response.data;
+    const response = await apiClient.get('/companies/sectors/list');
+    return unwrapApiResponse<Sector[]>(response.data) ?? [];
   } catch (error) {
     throw new Error(handleApiError(error));
   }
@@ -56,11 +59,16 @@ export const getComparableCompanies = async (
   limit = 5
 ): Promise<ComparableCompaniesResponse> => {
   try {
-    const response = await apiClient.get<ComparableCompaniesResponse>(
-      `/companies/${symbol}/comparable`,
-      { params: { limit } }
-    );
-    return response.data;
+    const response = await apiClient.get(`/companies/${symbol}/comparable`, {
+      params: { limit },
+    });
+    const data = unwrapApiResponse<ComparableCompaniesResponse>(response.data);
+
+    if (!data) {
+      throw new Error('Réponse invalide reçue pour les sociétés comparables.');
+    }
+
+    return data;
   } catch (error) {
     throw new Error(handleApiError(error));
   }
