@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   TrendingUp,
@@ -57,217 +57,142 @@ function MarketOverview() {
     </div>
   );
 }
-function LoadingCard({ title, icon: Icon }: { title: string; icon: typeof TrendingUp }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Icon size={20} className="text-muted-foreground" />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+
+type LucideIcon = typeof TrendingUp;
+
+type Fetcher = () => Promise<TopCompany[]>;
+
+const priceFormatter = new Intl.NumberFormat('fr-FR', {
+  maximumFractionDigits: 0,
+});
+
+const percentFormatter = new Intl.NumberFormat('fr-FR', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+interface TopCompaniesCardProps {
+  title: string;
+  icon: LucideIcon;
+  iconClassName: string;
+  fetcher: Fetcher;
+  badgeVariant: NonNullable<BadgeProps['variant']>;
+}
+
+function TopCompaniesCard({
+  title,
+  icon: Icon,
+  iconClassName,
+  fetcher,
+  badgeVariant,
+}: TopCompaniesCardProps) {
+  const [companies, setCompanies] = useState<TopCompany[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadCompanies = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await fetcher();
+      setCompanies(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur de chargement');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetcher]);
+
+  useEffect(() => {
+    loadCompanies();
+  }, [loadCompanies]);
+
+  const content = useMemo(() => {
+    if (loading) {
+      return (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           <span className="ml-3 text-gray-500">Chargement des données...</span>
         </div>
-      </CardContent>
-    </Card>
-  );
-}
+      );
+    }
 
-function ErrorCard({
-  title,
-  icon: Icon,
-  message,
-  onRetry,
-}: {
-  title: string;
-  icon: typeof TrendingUp;
-  message: string;
-  onRetry: () => void;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Icon size={20} className="text-muted-foreground" />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+    if (error) {
+      return (
         <div className="text-center py-6 space-y-4">
           <AlertCircle className="mx-auto text-red-500" size={32} />
-          <p className="text-red-600 text-sm">{message}</p>
-          <Button onClick={onRetry} variant="outline" size="sm" className="gap-2">
+          <p className="text-red-600 text-sm">{error}</p>
+          <Button onClick={loadCompanies} variant="outline" size="sm" className="gap-2">
             <RefreshCw size={16} />
             Réessayer
           </Button>
         </div>
-      </CardContent>
-    </Card>
-  );
-}
+      );
+    }
 
-function EmptyCard({ title, icon: Icon, onRetry }: {
-  title: string;
-  icon: typeof TrendingUp;
-  onRetry: () => void;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Icon size={20} className="text-muted-foreground" />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+    if (companies.length === 0) {
+      return (
         <div className="text-center py-6 text-gray-500 space-y-4">
           <p>Aucune donnée disponible</p>
-          <Button onClick={onRetry} variant="outline" size="sm" className="gap-2">
+          <Button onClick={loadCompanies} variant="outline" size="sm" className="gap-2">
             <RefreshCw size={16} />
             Actualiser
           </Button>
         </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function TopGainers() {
-  const [gainers, setGainers] = useState<TopCompany[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchGainers = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getTopGainers(5);
-      setGainers(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur de chargement');
-    } finally {
-      setLoading(false);
+      );
     }
-  };
 
-  useEffect(() => {
-        fetchGainers();
-  }, []);
+    return (
+      <div className="space-y-3">
+        {companies.map((company) => {
+          const change = typeof company.change_percent === 'number' ? company.change_percent : 0;
+          const absoluteChange = Math.abs(change);
+          const sign = change >= 0 ? '+' : '-';
+          const percentLabel = `${sign}${percentFormatter.format(absoluteChange)}%`;
+          const priceValue = Number.isFinite(company.current_price) ? company.current_price : 0;
+          const formattedPrice = `${priceFormatter.format(priceValue)} F`;
 
-  if (loading) {
-    return <LoadingCard title="Top Gainers" icon={TrendingUp} />;
-  }
-
-  if (error) {
-    return <ErrorCard title="Top Gainers" icon={TrendingUp} message={error} onRetry={fetchGainers} />;
-  }
-
-  if (gainers.length === 0) {
-    return <EmptyCard title="Top Gainers" icon={TrendingUp} onRetry={fetchGainers} />;
-  }
+          return (
+            <div
+              key={company.symbol}
+              className="flex items-center justify-between p-3 rounded-lg border bg-card text-card-foreground shadow-sm transition hover:shadow"
+            >
+              <div>
+                <p className="font-semibold">{company.symbol}</p>
+                <p className="text-sm text-muted-foreground">{company.name}</p>
+              </div>
+              <div className="text-right">
+                <p className="font-bold">{formattedPrice}</p>
+                <Badge variant={badgeVariant}>{percentLabel}</Badge>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, [badgeVariant, companies, error, loadCompanies, loading]);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <TrendingUp className="text-green-600" size={20} />
-          Top Gainers
+          <Icon className={iconClassName} size={20} />
+          {title}
         </CardTitle>
       </CardHeader>
-      <CardContent>
-         <div className="space-y-3">
-          {gainers.map((company) => (
-            <div
-              key={company.symbol}
-              className="flex items-center justify-between p-3 bg-green-50 rounded-lg hover:bg-green-100 transition"
-            >
-              <div>
-                <p className="font-semibold">{company.symbol}</p>
-                <p className="text-sm text-gray-600">{company.name}</p>
-              </div>
-              <div className="text-right">
-                <p className="font-bold">{company.current_price.toLocaleString()} F</p>
-                <Badge variant="success">+{company.change_percent.toFixed(2)}%</Badge>
-              </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
+      <CardContent>{content}</CardContent>
     </Card>
   );
 }
-function TopLosers() {
-  const [losers, setLosers] = useState<TopCompany[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchLosers = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getTopLosers(5);
-      setLosers(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur de chargement');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchLosers();
-  }, []);
-
-  if (loading) {
-     return <LoadingCard title="Top Losers" icon={TrendingDown} />;
-  }
-
-  if (error) {
-    return <ErrorCard title="Top Losers" icon={TrendingDown} message={error} onRetry={fetchLosers} />;
-  }
-
-  if (losers.length === 0) {
-    return <EmptyCard title="Top Losers" icon={TrendingDown} onRetry={fetchLosers} />;
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <TrendingDown className="text-red-600" size={20} />
-          Top Losers
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {losers.map((company) => (
-            <div
-              key={company.symbol}
-              className="flex items-center justify-between p-3 bg-red-50 rounded-lg hover:bg-red-100 transition"
-            >
-              <div>
-                <p className="font-semibold">{company.symbol}</p>
-                <p className="text-sm text-gray-600">{company.name}</p>
-              </div>
-              <div className="text-right">
-                <p className="font-bold">{company.current_price.toLocaleString()} F</p>
-                <Badge variant="destructive">{company.change_percent.toFixed(2)}%</Badge>
-              </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 export default function DashboardPage() {
+  const fetchTopGainers = useCallback(() => getTopGainers(5), []);
+  const fetchTopLosers = useCallback(() => getTopLosers(5), []);
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-         <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold text-gray-900">Tableau de bord</h1>
             <p className="text-gray-600 mt-2">Vue d'ensemble du marché BRVM</p>
@@ -277,11 +202,23 @@ export default function DashboardPage() {
           </div>
         </div>
 
-          <MarketOverview />
-        
+        <MarketOverview />
+
         <div className="grid md:grid-cols-2 gap-6">
-          <TopGainers />
-          <TopLosers />
+          <TopCompaniesCard
+            title="Top Gainers"
+            icon={TrendingUp}
+            iconClassName="text-green-600"
+            fetcher={fetchTopGainers}
+            badgeVariant="success"
+          />
+          <TopCompaniesCard
+            title="Top Losers"
+            icon={TrendingDown}
+            iconClassName="text-red-600"
+            fetcher={fetchTopLosers}
+            badgeVariant="destructive"
+          />
         </div>
 
         <Card className="bg-blue-50 border-blue-200">
