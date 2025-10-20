@@ -10,7 +10,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: 'BRVM Investment Platform',
   description: 'Plateforme d\'investissement en bourse pour l\'UEMOA',
-  };
+};
 
 export default function RootLayout({
   children,
