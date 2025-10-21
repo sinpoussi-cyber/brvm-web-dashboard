@@ -23,7 +23,8 @@ export default function RegisterPage() {
       await registerUser(email, password);
       setSuccess(true);
     } catch (err) {
-      setError('Erreur lors de l\'inscription. Veuillez réessayer.');
+      const message = err instanceof Error ? err.message : "Erreur lors de l'inscription. Veuillez réessayer.";
+      setError(message);
     } finally {
       setLoading(false);
     }
