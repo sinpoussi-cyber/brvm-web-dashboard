@@ -4,8 +4,29 @@
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://brvm-api-xode.onrender.com';
-const API_VERSION = process.env.NEXT_PUBLIC_API_VERSION || '/api/v1';
+const DEFAULT_API_URL = 'https://brvm-api-xode.onrender.com';
+const DEFAULT_API_VERSION = '/api/v1';
+const PROXY_BASE_PATH = '/api/proxy';
+
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+const ensureLeadingSlash = (value: string) => (value.startsWith('/') ? value : `/${value}`);
+
+const rawApiVersion = process.env.NEXT_PUBLIC_API_VERSION || DEFAULT_API_VERSION;
+const normalizedApiVersion = ensureLeadingSlash(trimTrailingSlash(rawApiVersion));
+const publicApiUrl = process.env.NEXT_PUBLIC_API_URL;
+const backendApiUrl = process.env.BACKEND_API_URL || publicApiUrl || DEFAULT_API_URL;
+const useDirectBrowserCalls = process.env.NEXT_PUBLIC_API_USE_DIRECT === 'true';
+
+const browserUsesProxy = !(useDirectBrowserCalls && publicApiUrl?.startsWith('http'));
+const browserBaseURL = browserUsesProxy
+  ? PROXY_BASE_PATH
+  : `${trimTrailingSlash(publicApiUrl!)}${normalizedApiVersion}`;
+const serverBaseURL = `${trimTrailingSlash(backendApiUrl)}${normalizedApiVersion}`;
+
+const browserRefreshUrl = browserUsesProxy
+  ? `${PROXY_BASE_PATH}/auth/refresh`
+  : `${trimTrailingSlash(publicApiUrl!)}${normalizedApiVersion}/auth/refresh`;
+const serverRefreshUrl = `${serverBaseURL}/auth/refresh`;
 
 const isBrowser = typeof window !== 'undefined';
 
@@ -48,7 +69,7 @@ const safeStorage = {
 
 // Créer l'instance Axios
 const apiClient = axios.create({
-  baseURL: `${API_URL}${API_VERSION}`,
+  baseURL:isBrowser ? browserBaseURL : serverBaseURL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -83,7 +104,8 @@ apiClient.interceptors.response.use(
         const refreshToken = safeStorage.get('refresh_token');
 
         if (refreshToken) {
-          const response = await axios.post(`${API_URL}${API_VERSION}/auth/refresh`, {
+          const refreshEndpoint = isBrowser ? browserRefreshUrl : serverRefreshUrl;
+          const response = await axios.post(refreshEndpoint, {
             refresh_token: refreshToken,
           });
 
