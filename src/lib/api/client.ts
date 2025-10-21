@@ -16,6 +16,8 @@ const normalizedApiVersion = ensureLeadingSlash(trimTrailingSlash(rawApiVersion)
 const publicApiUrl = process.env.NEXT_PUBLIC_API_URL;
 const backendApiUrl = process.env.BACKEND_API_URL || publicApiUrl || DEFAULT_API_URL;
 const useDirectBrowserCalls = process.env.NEXT_PUBLIC_API_USE_DIRECT === 'true';
+const apiAuthHeaderName = process.env.API_AUTH_HEADER || 'Authorization';
+const apiAuthToken = process.env.API_AUTH_TOKEN;
 
 const browserUsesProxy = !(useDirectBrowserCalls && publicApiUrl?.startsWith('http'));
 const browserBaseURL = browserUsesProxy
@@ -68,13 +70,19 @@ const safeStorage = {
 };
 
 // Créer l'instance Axios
+const defaultHeaders: Record<string, string> = {
+  'Content-Type': 'application/json',
+};
+
+if (!isBrowser && apiAuthToken) {
+  defaultHeaders[apiAuthHeaderName] = apiAuthToken;
+}
+
 const apiClient = axios.create({
-  baseURL:isBrowser ? browserBaseURL : serverBaseURL,
+  baseURL: isBrowser ? browserBaseURL : serverBaseURL,
   timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+  headers: defaultHeaders,
+  });
 
 // Intercepteur de requêtes (ajouter le token)
 apiClient.interceptors.request.use(
