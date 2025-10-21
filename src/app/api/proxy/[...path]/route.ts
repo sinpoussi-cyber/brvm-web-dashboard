@@ -11,6 +11,8 @@ const getBackendBaseUrl = () =>
     process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || DEFAULT_BACKEND_URL
   );
 const getApiVersion = () => normalizeVersion(process.env.NEXT_PUBLIC_API_VERSION || DEFAULT_API_VERSION);
+const getApiAuthHeaderName = () => process.env.API_AUTH_HEADER || 'Authorization';
+const getApiAuthToken = () => process.env.API_AUTH_TOKEN;
 
 async function proxyRequest(request: NextRequest, pathSegments?: string[]) {
   const segments = pathSegments?.filter(Boolean) ?? [];
@@ -27,6 +29,13 @@ async function proxyRequest(request: NextRequest, pathSegments?: string[]) {
   headers.delete('connection');
   headers.delete('content-length');
   headers.set('accept-encoding', 'identity');
+
+  const apiAuthToken = getApiAuthToken();
+  const apiAuthHeader = getApiAuthHeaderName();
+
+  if (apiAuthToken && !headers.has(apiAuthHeader)) {
+    headers.set(apiAuthHeader, apiAuthToken);
+  }
 
   const init: RequestInit = {
     method: request.method,
