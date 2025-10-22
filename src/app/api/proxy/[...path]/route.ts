@@ -6,13 +6,18 @@ const DEFAULT_API_VERSION = '/api/v1';
 const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '');
 const normalizeVersion = (version: string) => (version.startsWith('/') ? version : `/${version}`);
 
+const sanitizeEnvValue = (value: string | undefined) => value?.trim().replace(/^['"]|['"]$/g, '');
+
 const getBackendBaseUrl = () =>
   normalizeBaseUrl(
-    process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || DEFAULT_BACKEND_URL
+    sanitizeEnvValue(process.env.BACKEND_API_URL) ||
+      sanitizeEnvValue(process.env.NEXT_PUBLIC_API_URL) ||
+      DEFAULT_BACKEND_URL
   );
-const getApiVersion = () => normalizeVersion(process.env.NEXT_PUBLIC_API_VERSION || DEFAULT_API_VERSION);
-const getApiAuthHeaderName = () => process.env.API_AUTH_HEADER || 'Authorization';
-const getApiAuthToken = () => process.env.API_AUTH_TOKEN;
+const getApiVersion = () =>
+  normalizeVersion(sanitizeEnvValue(process.env.NEXT_PUBLIC_API_VERSION) || DEFAULT_API_VERSION);
+const getApiAuthHeaderName = () => sanitizeEnvValue(process.env.API_AUTH_HEADER) || 'Authorization';
+const getApiAuthToken = () => sanitizeEnvValue(process.env.API_AUTH_TOKEN);
 
 async function proxyRequest(request: NextRequest, pathSegments?: string[]) {
   const segments = pathSegments?.filter(Boolean) ?? [];
