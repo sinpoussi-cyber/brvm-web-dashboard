@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -72,6 +72,17 @@ const percentFormatter = new Intl.NumberFormat('fr-FR', {
   maximumFractionDigits: 2,
 });
 
+const timeFormatter = new Intl.DateTimeFormat('fr-FR', {
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+const AUTO_REFRESH_INTERVAL_MS = 60_000;
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 1500;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 interface TopCompaniesCardProps {
   title: string;
   icon: LucideIcon;
@@ -93,50 +104,91 @@ function TopCompaniesCard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUsingFallback, setIsUsingFallback] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const fetchInFlightRef = useRef(false);
 
-  const loadCompanies = useCallback(async () => {
-    try {
+  const loadCompanies = useCallback(
+    async ({ force = false }: { force?: boolean } = {}) => {
+      if (fetchInFlightRef.current && !force) {
+        return;
+      }
+
+      fetchInFlightRef.current = true;
       setLoading(true);
       setError(null);
       setIsUsingFallback(false);
-      const data = await fetcher();
 
-      if (Array.isArray(data) && data.length > 0) {
-        setCompanies(data);
-        return;
-      }
-
-      if (fallbackData.length > 0) {
-        console.warn(
-          `[TopCompaniesCard] Aucune donnée reçue pour ${title}. Utilisation du jeu de données de secours.`
-        );
-        setCompanies(fallbackData);
-        setIsUsingFallback(true);
-        return;
-      }
-
-      setCompanies([]);
-    } catch (err) {
-      if (fallbackData.length > 0) {
-        console.error(
-          `[TopCompaniesCard] Impossible de charger ${title}. Utilisation du jeu de données de secours.`,
-          err
-        );
-        setCompanies(fallbackData);
-        setIsUsingFallback(true);
-        return;
-      }
+      let lastError: unknown = null;
       
-      setError(err instanceof Error ? err.message : 'Erreur de chargement');
-      setCompanies([]);
-    } finally {
-      setLoading(false);
-    }
-   }, [fallbackData, fetcher, title]);
+      try {
+        for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt += 1) {
+          try {
+            const data = await fetcher();
+
+            if (Array.isArray(data) && data.length > 0) {
+              setCompanies(data);
+              setIsUsingFallback(false);
+              setLastUpdated(new Date());
+              return;
+            }
+
+            lastError = new Error('Aucune donnée reçue');
+          } catch (err) {
+            lastError = err;
+          }
+
+          if (attempt < MAX_RETRY_ATTEMPTS) {
+            const delay = RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+            console.warn(
+              `[TopCompaniesCard] Tentative ${attempt} échouée pour ${title}. Nouvel essai dans ${delay} ms.`
+            );
+            await sleep(delay);
+          }
+        }
+
+        if (fallbackData.length > 0) {
+          console.warn(
+            `[TopCompaniesCard] Utilisation des données de secours pour ${title}.`
+          );
+          setCompanies(fallbackData);
+          setIsUsingFallback(true);
+          setLastUpdated(new Date());
+          return;
+        }
+
+        const message =
+          lastError instanceof Error ? lastError.message : 'Erreur de chargement';
+        setError(message);
+        setCompanies([]);
+      } finally {
+        fetchInFlightRef.current = false;
+        setLoading(false);
+      }
+      },
+    [fallbackData, fetcher, title]
+  );
+    
+  useEffect(() => {
+    void loadCompanies();
+  }, [loadCompanies]);
 
   useEffect(() => {
-    loadCompanies();
+    const interval = setInterval(() => {
+      void loadCompanies();
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => {
+      clearInterval(interval);
+    };
   }, [loadCompanies]);
+
+  const statusLabel = useMemo(() => {
+    if (lastUpdated) {
+      return `Mis à jour à ${timeFormatter.format(lastUpdated)}`;
+    }
+
+    return 'Connexion à l’API BRVM en cours…';
+  }, [lastUpdated]);
 
   const content = useMemo(() => {
     if (loading) {
@@ -153,8 +205,13 @@ function TopCompaniesCard({
         <div className="text-center py-6 space-y-4">
           <AlertCircle className="mx-auto text-red-500" size={32} />
           <p className="text-red-600 text-sm">{error}</p>
-          <Button onClick={loadCompanies} variant="outline" size="sm" className="gap-2">
-            <RefreshCw size={16} />
+          <Button
+            onClick={() => loadCompanies({ force: true })}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
+           <RefreshCw size={16} />
             Réessayer
           </Button>
         </div>
@@ -165,7 +222,12 @@ function TopCompaniesCard({
       return (
         <div className="text-center py-6 text-gray-500 space-y-4">
           <p>Aucune donnée disponible</p>
-          <Button onClick={loadCompanies} variant="outline" size="sm" className="gap-2">
+          <Button
+            onClick={() => loadCompanies({ force: true })}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
             <RefreshCw size={16} />
             Actualiser
           </Button>
@@ -187,7 +249,12 @@ function TopCompaniesCard({
                 </p>
               </div>
             </div>
-            <Button onClick={loadCompanies} size="sm" variant="outline" className="text-xs">
+            <Button
+              onClick={() => loadCompanies({ force: true })}
+              size="sm"
+              variant="outline"
+              className="text-xs"
+            >
               Réessayer
             </Button>
           </div>
@@ -227,6 +294,9 @@ function TopCompaniesCard({
           <Icon className={iconClassName} size={20} />
           {title}
         </CardTitle>
+        <CardDescription>
+          {statusLabel} • Actualisation automatique toutes les 60&nbsp;s
+        </CardDescription>
       </CardHeader>
       <CardContent>{content}</CardContent>
     </Card>
