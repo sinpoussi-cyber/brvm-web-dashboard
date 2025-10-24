@@ -17,22 +17,60 @@ const rawApiVersion = sanitizeEnvValue(process.env.NEXT_PUBLIC_API_VERSION) || D
 const normalizedApiVersion = ensureLeadingSlash(trimTrailingSlash(rawApiVersion));
 const publicApiUrl = sanitizeEnvValue(process.env.NEXT_PUBLIC_API_URL);
 const backendApiUrl = sanitizeEnvValue(process.env.BACKEND_API_URL) || publicApiUrl || DEFAULT_API_URL;
-const useDirectBrowserCalls = sanitizeEnvValue(process.env.NEXT_PUBLIC_API_USE_DIRECT) === 'true';
 const apiAuthHeaderName = sanitizeEnvValue(process.env.API_AUTH_HEADER) || 'Authorization';
 const apiAuthToken = sanitizeEnvValue(process.env.API_AUTH_TOKEN);
 
-const browserUsesProxy = !(useDirectBrowserCalls && publicApiUrl?.startsWith('http'));
+type BrowserRoutingDirective = 'true' | 'false' | 'auto';
+
+const normalizeDirective = (value: string | undefined): BrowserRoutingDirective => {
+  if (!value) {
+    return 'auto';
+  }
+
+  const normalized = value.toLowerCase();
+
+  if (normalized === 'true' || normalized === 'false') {
+    return normalized;
+  }
+
+  return 'auto';
+};
+
+const rawDirective = sanitizeEnvValue(process.env.NEXT_PUBLIC_API_USE_DIRECT);
+const directive = normalizeDirective(rawDirective);
+
+const directBrowserBaseURL = publicApiUrl?.startsWith('http')
+  ? `${trimTrailingSlash(publicApiUrl)}${normalizedApiVersion}`
+  : null;
+
+const canUseDirectBrowserCalls = Boolean(directBrowserBaseURL);
+
+const prefersProxyByDefault =
+  !canUseDirectBrowserCalls || (directive === 'auto' && process.env.NODE_ENV === 'development');
+
+const browserUsesProxy =
+  directive === 'false' || (!canUseDirectBrowserCalls && directive === 'true') ||
+  (directive !== 'true' && prefersProxyByDefault);
+
 const browserBaseURL = browserUsesProxy
   ? PROXY_BASE_PATH
-  : `${trimTrailingSlash(publicApiUrl!)}${normalizedApiVersion}`;
+  : directBrowserBaseURL ?? PROXY_BASE_PATH;
+
+const browserFallbackBaseURL = browserUsesProxy ? directBrowserBaseURL : PROXY_BASE_PATH;
+
 const serverBaseURL = `${trimTrailingSlash(backendApiUrl)}${normalizedApiVersion}`;
 
 const browserRefreshUrl = browserUsesProxy
   ? `${PROXY_BASE_PATH}/auth/refresh`
-  : `${trimTrailingSlash(publicApiUrl!)}${normalizedApiVersion}/auth/refresh`;
+  : `${directBrowserBaseURL}/auth/refresh`;
 const serverRefreshUrl = `${serverBaseURL}/auth/refresh`;
 
 const isBrowser = typeof window !== 'undefined';
+
+type RetriableRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+  _usedFallbackBase?: boolean;
+};
 
 const safeStorage = {
   get(key: string) {
@@ -104,8 +142,26 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const originalRequest = error.config as RetriableRequestConfig;
+    const isNetworkError = error.code === 'ERR_NETWORK' || (!error.response && error.request);
 
+    if (
+      isBrowser &&
+      browserFallbackBaseURL &&
+      isNetworkError &&
+      !originalRequest._usedFallbackBase
+    ) {
+      console.warn(
+        `[apiClient] Échec avec ${originalRequest.baseURL ?? apiClient.defaults.baseURL}. ` +
+          `Nouvelle tentative avec ${browserFallbackBaseURL}.`
+      );
+
+      originalRequest._usedFallbackBase = true;
+      originalRequest.baseURL = browserFallbackBaseURL;
+
+      return apiClient(originalRequest);
+    }
+    
     // Si erreur 401 et pas déjà tenté de rafraîchir
     if (isBrowser && error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
