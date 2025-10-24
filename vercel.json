@@ -3,5 +3,4 @@
   "installCommand": "npm install --legacy-peer-deps",
   "framework": "nextjs",
   "regions": ["iad1"],
-  "nodeVersion": "22.x"
 }
