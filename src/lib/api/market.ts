@@ -2,6 +2,8 @@
 // API MARKET - Données de marché
 // ==============================================================================
 
+import axios from 'axios';
+
 import apiClient, { handleApiError } from './client';
 import { unwrapApiResponse } from './helpers';
 import type { PriceData, Quote, TopCompany, SectorPerformanceResponse } from '@/types/api';
@@ -180,18 +182,46 @@ const unwrapTopCompanies = (payload: unknown): TopCompany[] => {
     .filter((entry): entry is TopCompany => Boolean(entry));
 };
 
-const fetchTopCompanies = async (endpoint: string, limit = 10): Promise<TopCompany[]> => {
-  try {
-    const response = await apiClient.get(endpoint, {
-      params: topListParamAliases(limit),
-    });
-
-    const companies = unwrapTopCompanies(response.data);
-
-    return companies.slice(0, limit);
-  } catch (error) {
-    throw new Error(handleApiError(error));
+const shouldRetryTopEndpoint = (error: unknown): boolean => {
+  if (!axios.isAxiosError(error)) {
+    return false;
   }
+
+  const status = error.response?.status;
+
+  if (!status) {
+    return false;
+  }
+
+  return [404, 405, 422].includes(status);
+};
+
+const fetchTopCompanies = async (
+  endpoints: string | string[],
+  limit = 10
+): Promise<TopCompany[]> => {
+  const candidates = Array.isArray(endpoints) ? endpoints : [endpoints];
+  let lastError: unknown = new Error('Aucun endpoint disponible');
+
+  for (const endpoint of candidates) {
+    try {
+      const response = await apiClient.get(endpoint, {
+        params: topListParamAliases(limit),
+      });
+
+      const companies = unwrapTopCompanies(response.data);
+
+      return companies.slice(0, limit);
+    } catch (error) {
+      lastError = error;
+
+      if (!shouldRetryTopEndpoint(error)) {
+        break;
+      }
+    }
+  }
+  
+  throw new Error(handleApiError(lastError));
 };
 
 // Récupérer l'historique des prix
@@ -227,17 +257,26 @@ export const getQuote = async (symbol: string): Promise<Quote> => {
 
 // Top gainers
 export const getTopGainers = async (limit = 10): Promise<TopCompany[]> => {
-  return fetchTopCompanies('/market/gainers/top', limit);
+  return fetchTopCompanies(
+    ['/market/gainers/top', '/market/top/gainers', '/market/top-gainers', '/market/gainers'],
+    limit
+  );
 };
 
 // Top losers
 export const getTopLosers = async (limit = 10): Promise<TopCompany[]> => {
-  return fetchTopCompanies('/market/losers/top', limit);
+  return fetchTopCompanies(
+    ['/market/losers/top', '/market/top/losers', '/market/top-losers', '/market/losers'],
+    limit
+  );
 };
 
 // Top volumes
 export const getTopVolume = async (limit = 10): Promise<TopCompany[]> => {
-  return fetchTopCompanies('/market/volume/top', limit);
+  return fetchTopCompanies(
+    ['/market/volume/top', '/market/top/volume', '/market/top-volume', '/market/volume'],
+    limit
+  );
 };
 
 // Performance par secteur
