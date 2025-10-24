@@ -192,14 +192,9 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900">Tableau de bord</h1>
-            <p className="text-gray-600 mt-2">Vue d'ensemble du marché BRVM</p>
-          </div>
-          <div className="text-sm text-gray-500">
-            API: {process.env.NEXT_PUBLIC_API_URL || 'Non configuré'}
-          </div>
+        <div>
+          <h1 className="text-4xl font-bold text-gray-900">Tableau de bord</h1>
+          <p className="text-gray-600 mt-2">Vue d'ensemble du marché BRVM</p>
         </div>
 
         <MarketOverview />

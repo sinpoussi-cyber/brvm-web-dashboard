@@ -100,6 +100,13 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Callback pour gérer la déconnexion (peut être surchargé par l'application)
+export let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: () => void) {
+  onUnauthorized = handler;
+}
+
 // Intercepteur de réponses (gérer les erreurs)
 apiClient.interceptors.response.use(
   (response) => response,
@@ -113,33 +120,41 @@ apiClient.interceptors.response.use(
       try {
         const refreshToken = safeStorage.get('refresh_token');
 
-        if (refreshToken) {
-          const refreshEndpoint = isBrowser ? browserRefreshUrl : serverRefreshUrl;
-          const response = await axios.post(refreshEndpoint, {
-            refresh_token: refreshToken,
-          });
-
-          const { access_token, refresh_token: newRefreshToken } = response.data as {
-            access_token: string;
-            refresh_token: string;
-          };
-
-          safeStorage.set('access_token', access_token);
-          safeStorage.set('refresh_token', newRefreshToken);
-
-          if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${access_token}`;
-          }
-
-          return apiClient(originalRequest);
+        if (!refreshToken) {
+          throw new Error('No refresh token available');
         }
+
+        const refreshEndpoint = isBrowser ? browserRefreshUrl : serverRefreshUrl;
+        const response = await axios.post(refreshEndpoint, {
+          refresh_token: refreshToken,
+        });
+
+        const { access_token, refresh_token: newRefreshToken } = response.data as {
+          access_token: string;
+          refresh_token: string;
+        };
+
+        safeStorage.set('access_token', access_token);
+        safeStorage.set('refresh_token', newRefreshToken);
+
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        }
+
+        return apiClient(originalRequest);
       } catch (refreshError) {
-        // Échec du rafraîchissement, déconnecter l'utilisateur côté client uniquement
+        // Échec du rafraîchissement, déconnecter l'utilisateur
+        console.error('[apiClient] Token refresh failed, logging out user', refreshError);
         safeStorage.remove('access_token');
         safeStorage.remove('refresh_token');
 
         if (isBrowser) {
-          window.location.href = '/login';
+          // Utiliser le callback si défini, sinon redirection par défaut
+          if (onUnauthorized) {
+            onUnauthorized();
+          } else {
+            window.location.href = '/login';
+          }
         }
 
         return Promise.reject(refreshError);
