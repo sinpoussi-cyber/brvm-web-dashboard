@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { getTopGainers, getTopLosers } from '@/lib/api/market';
 import type { TopCompany } from '@/types/api';
+import { fallbackTopGainers, fallbackTopLosers } from '@/lib/data/topMoversFallback';
 
 // Composant Market Overview
 function MarketOverview() {
@@ -77,6 +78,7 @@ interface TopCompaniesCardProps {
   iconClassName: string;
   fetcher: Fetcher;
   badgeVariant: NonNullable<BadgeProps['variant']>;
+  fallbackData?: TopCompany[];
 }
 
 function TopCompaniesCard({
@@ -85,23 +87,52 @@ function TopCompaniesCard({
   iconClassName,
   fetcher,
   badgeVariant,
+  fallbackData = [],
 }: TopCompaniesCardProps) {
   const [companies, setCompanies] = useState<TopCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isUsingFallback, setIsUsingFallback] = useState(false);
 
   const loadCompanies = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+      setIsUsingFallback(false);
       const data = await fetcher();
-      setCompanies(Array.isArray(data) ? data : []);
+
+      if (Array.isArray(data) && data.length > 0) {
+        setCompanies(data);
+        return;
+      }
+
+      if (fallbackData.length > 0) {
+        console.warn(
+          `[TopCompaniesCard] Aucune donnée reçue pour ${title}. Utilisation du jeu de données de secours.`
+        );
+        setCompanies(fallbackData);
+        setIsUsingFallback(true);
+        return;
+      }
+
+      setCompanies([]);
     } catch (err) {
+      if (fallbackData.length > 0) {
+        console.error(
+          `[TopCompaniesCard] Impossible de charger ${title}. Utilisation du jeu de données de secours.`,
+          err
+        );
+        setCompanies(fallbackData);
+        setIsUsingFallback(true);
+        return;
+      }
+      
       setError(err instanceof Error ? err.message : 'Erreur de chargement');
+      setCompanies([]);
     } finally {
       setLoading(false);
     }
-  }, [fetcher]);
+   }, [fallbackData, fetcher, title]);
 
   useEffect(() => {
     loadCompanies();
@@ -144,6 +175,23 @@ function TopCompaniesCard({
 
     return (
       <div className="space-y-3">
+        {isUsingFallback && (
+          <div className="flex items-start justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="flex gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <p className="font-semibold">Données temporaires affichées</p>
+                <p>
+                  Impossible de joindre l'API distante. Les valeurs ci-dessous sont des exemples à titre
+                  indicatif.
+                </p>
+              </div>
+            </div>
+            <Button onClick={loadCompanies} size="sm" variant="outline" className="text-xs">
+              Réessayer
+            </Button>
+          </div>
+        )}
         {companies.map((company) => {
           const change = typeof company.change_percent === 'number' ? company.change_percent : 0;
           const absoluteChange = Math.abs(change);
@@ -155,7 +203,7 @@ function TopCompaniesCard({
           return (
             <div
               key={company.symbol}
-              className="flex items-center justify-between p-3 rounded-lg border bg-card text-card-foreground shadow-sm transition hover:shadow"
+              className="flex items-center justify-between rounded-lg border bg-card p-3 text-card-foreground shadow-sm transition hover:shadow"
             >
               <div>
                 <p className="font-semibold">{company.symbol}</p>
@@ -170,7 +218,7 @@ function TopCompaniesCard({
         })}
       </div>
     );
-  }, [badgeVariant, companies, error, loadCompanies, loading]);
+  }, [badgeVariant, companies, error, isUsingFallback, loadCompanies, loading]);
 
   return (
     <Card>
@@ -211,6 +259,7 @@ export default function DashboardPage() {
             iconClassName="text-green-600"
             fetcher={fetchTopGainers}
             badgeVariant="success"
+            fallbackData={fallbackTopGainers}
           />
           <TopCompaniesCard
             title="Top Losers"
@@ -218,6 +267,7 @@ export default function DashboardPage() {
             iconClassName="text-red-600"
             fetcher={fetchTopLosers}
             badgeVariant="destructive"
+            fallbackData={fallbackTopLosers}
           />
         </div>
 
