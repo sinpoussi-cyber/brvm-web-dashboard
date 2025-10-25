@@ -26,8 +26,14 @@ export default function CompaniesPage() {
     return matchesSearch && matchesSector;
   });
 
-  const sectors = Array.from(new Set(companies.map(c => c.sector).filter(Boolean)));
-
+  const sectors = Array.from(
+    new Set(
+      companies
+        .map((company) => company.sector)
+        .filter((sector): sector is string => typeof sector === 'string' && sector.trim().length > 0)
+    )
+  );
+  
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
