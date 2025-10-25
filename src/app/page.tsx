@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Search, Building2, TrendingUp, TrendingDown } from 'lucide-react';
+import { Search, Building2, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import Link from 'next/link';
 
 export default function CompaniesPage() {
   const { companies, isLoading, error, fetchCompanies } = useCompanies();
@@ -30,15 +31,27 @@ export default function CompaniesPage() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-        <Card className="max-w-md w-full">
+        <Card className="max-w-lg w-full">
           <CardContent className="pt-6">
-            <div className="text-center">
-              <h2 className="text-xl font-bold text-red-600 mb-2">Erreur de connexion</h2>
-              <p className="text-gray-600 mb-4">{error}</p>
-              <p className="text-sm text-gray-500">
-                L'API backend nécessite une authentification. 
-                Veuillez vous connecter d'abord.
-              </p>
+            <div className="text-center space-y-4">
+              <AlertCircle className="mx-auto text-red-500" size={48} />
+              <h2 className="text-2xl font-bold text-red-600">Erreur de connexion</h2>
+              <p className="text-gray-600">{error}</p>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left">
+                <p className="text-sm text-yellow-800 font-semibold mb-2">
+                  💡 L'API nécessite une authentification
+                </p>
+                <p className="text-xs text-yellow-700">
+                  Les endpoints doivent être rendus publics côté backend pour permettre 
+                  l'accès aux données de marché sans authentification.
+                </p>
+              </div>
+              <button 
+                onClick={() => window.location.reload()} 
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Réessayer
+              </button>
             </div>
           </CardContent>
         </Card>
@@ -160,8 +173,11 @@ export default function CompaniesPage() {
         )}
 
         {!isLoading && filteredCompanies.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            Aucune société trouvée
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">Aucune société trouvée</p>
+            <p className="text-gray-400 text-sm mt-2">
+              Essayez de modifier vos critères de recherche
+            </p>
           </div>
         )}
       </div>
