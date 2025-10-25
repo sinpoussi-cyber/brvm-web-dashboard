@@ -4,6 +4,7 @@
 
 import apiClient, { handleApiError } from './client';
 import { unwrapApiResponse } from './helpers';
+import { getFallbackCompanies } from '../data/companiesFallback';
 import type { CompanyDetail, Sector, ComparableCompaniesResponse } from '@/types/api';
 
 const PUBLIC_API_BASES = Object.freeze([
@@ -283,10 +284,16 @@ export const getCompanies = async (params?: {
     const response = await apiClient.get('/companies/', { params });
     return unwrapApiResponse<CompanyDetail[]>(response.data) ?? [];
   } catch (error) {
-     const fallback = await fetchPublicCompanies(params);
+    const fallback = await fetchPublicCompanies(params);
 
     if (fallback && fallback.length > 0) {
       return fallback;
+    }
+
+    const localFallback = getFallbackCompanies(params);
+
+    if (localFallback.length > 0) {
+      return localFallback;
     }
 
     throw new Error(handleApiError(error));
