@@ -39,6 +39,12 @@ npm run build  # Test du build
 git push       # Déploiement auto sur Vercel
 ```
 
+### Authentification de l'API
+
+- Les endpoints du backend privé nécessitent un jeton (`API_AUTH_TOKEN`).
+- Ajoutez ce jeton dans les variables d'environnement Vercel pour que le proxy `/api/proxy` le relaie automatiquement.
+- Si l'API n'est pas accessible ou renvoie une erreur, des jeux de données d'exemple (sociétés, tops gagnants/perdants, etc.) s'afficheront afin que l'interface reste fonctionnelle.
+
 ## 📁 Structure
 
 src/
