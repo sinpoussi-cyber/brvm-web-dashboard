@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { registerUser } from '@/lib/api/auth';
+import Link from 'next/link';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -19,13 +20,18 @@ export default function RegisterPage() {
 
     try {
       await registerUser(email, password);
-      setMessage({ type: 'success', text: 'Inscription réussie ! Vous pouvez maintenant vous connecter.' });
+      setMessage({ 
+        type: 'success', 
+        text: 'Inscription réussie ! Vous pouvez maintenant vous connecter.' 
+      });
       setEmail('');
       setPassword('');
     } catch (error) {
       setMessage({ 
         type: 'error', 
-        text: error instanceof Error ? error.message : 'Erreur lors de l\'inscription. Veuillez réessayer.' 
+        text: error instanceof Error 
+          ? error.message 
+          : 'Erreur lors de l\'inscription. Vérifiez que l\'API backend est accessible.' 
       });
     } finally {
       setLoading(false);
@@ -44,12 +50,12 @@ export default function RegisterPage() {
         <CardContent>
           <form onSubmit={handleRegister} className="space-y-4">
             {message && (
-              <div className={`p-3 rounded-lg ${
+              <div className={`p-4 rounded-lg border ${
                 message.type === 'success' 
-                  ? 'bg-green-50 border border-green-200 text-green-700' 
-                  : 'bg-red-50 border border-red-200 text-red-700'
+                  ? 'bg-green-50 border-green-200 text-green-800' 
+                  : 'bg-red-50 border-red-200 text-red-800'
               }`}>
-                {message.text}
+                <p className="text-sm font-medium">{message.text}</p>
               </div>
             )}
 
@@ -91,9 +97,9 @@ export default function RegisterPage() {
 
             <p className="text-sm text-center text-gray-600">
               Déjà inscrit ?{' '}
-              <a href="/login" className="text-blue-600 hover:underline">
+              <Link href="/login" className="text-blue-600 hover:underline font-medium">
                 Se connecter
-              </a>
+              </Link>
             </p>
           </form>
         </CardContent>
