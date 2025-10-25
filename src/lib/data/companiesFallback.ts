@@ -1,6 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
 import type { CompanyDetail } from '@/types/api';
 
 type ExternalCompany = Partial<CompanyDetail> & Record<string, unknown>;
@@ -9,10 +6,53 @@ const freeze = <T>(value: T): T => Object.freeze(value);
 
 const normalizeSearch = (value: string | undefined) => value?.trim().toLowerCase() ?? '';
 
-const FALLBACK_DATA_PATH = process.env.FALLBACK_COMPANIES_PATH ?? process.env.NEXT_PUBLIC_FALLBACK_COMPANIES_PATH;
+type NodeModules = {
+  fs: typeof import('node:fs');
+  path: typeof import('node:path');
+};
+
+const FALLBACK_DATA_PATH =
+  typeof process !== 'undefined'
+    ? process.env.FALLBACK_COMPANIES_PATH ?? process.env.NEXT_PUBLIC_FALLBACK_COMPANIES_PATH
+    : undefined;
 
 let cachedCompanies: readonly CompanyDetail[] | null = null;
 let attemptedLoad = false;
+let cachedNodeModules: NodeModules | null = null;
+let attemptedModuleLoad = false;
+
+const getNodeModules = (): NodeModules | null => {
+  if (cachedNodeModules) {
+    return cachedNodeModules;
+  }
+
+  if (attemptedModuleLoad) {
+    return null;
+  }
+
+  attemptedModuleLoad = true;
+
+  if (typeof window !== 'undefined') {
+    return null;
+  }
+
+  try {
+    const requireFn = eval('require') as ((moduleId: string) => unknown) | undefined;
+
+    if (typeof requireFn !== 'function') {
+      return null;
+    }
+
+    const fs = requireFn('node:fs') as typeof import('node:fs');
+    const path = requireFn('node:path') as typeof import('node:path');
+
+    cachedNodeModules = { fs, path };
+    return cachedNodeModules;
+  } catch (error) {
+    console.warn('[fallback-data] Unable to access Node.js modules', error);
+    return null;
+  }
+};
 
 const sanitizeNumber = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -101,6 +141,14 @@ const loadExternalFallback = (): readonly CompanyDetail[] => {
     return Object.freeze([] as const);
   }
 
+  const nodeModules = getNodeModules();
+
+  if (!nodeModules) {
+    return Object.freeze([] as const);
+  }
+
+  const { fs, path } = nodeModules;
+  
   const resolvedPath = path.isAbsolute(FALLBACK_DATA_PATH)
     ? FALLBACK_DATA_PATH
     : path.join(process.cwd(), FALLBACK_DATA_PATH);
