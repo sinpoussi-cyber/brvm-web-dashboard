@@ -1,8 +1,8 @@
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 
 const baseURL = `${process.env.NEXT_PUBLIC_API_URL}${process.env.NEXT_PUBLIC_API_VERSION}`;
 
-const client = axios.create({
+const apiClient = axios.create({
   baseURL,
   headers: {
     "Content-Type": "application/json",
@@ -10,16 +10,18 @@ const client = axios.create({
   timeout: 10000,
 });
 
-// Gestion centralisée des erreurs
-client.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    console.error("Erreur API :", error?.response?.status, error?.message);
-    if (error?.response?.status === 401) {
-      console.warn("L'API nécessite une authentification.");
-    }
-    return Promise.reject(error);
+/**
+ * Gestion centralisée des erreurs API
+ */
+export function handleApiError(error: AxiosError): never {
+  if (error.response) {
+    console.error("Erreur API:", error.response.status, error.response.data);
+  } else if (error.request) {
+    console.error("Erreur réseau: aucune réponse reçue du serveur");
+  } else {
+    console.error("Erreur interne:", error.message);
   }
-);
+  throw error;
+}
 
-export default client;
+export default apiClient;
