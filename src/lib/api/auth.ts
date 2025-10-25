@@ -1,57 +1,44 @@
-import apiClient, { handleApiError } from './client';
-import { unwrapApiResponse } from './helpers';
+import apiClient, { handleApiError } from "./client";
 
-interface AuthTokens {
+export interface AuthTokens {
   access_token: string;
   refresh_token?: string;
 }
 
-const ACCESS_TOKEN_KEY = 'access_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
 
-const isBrowser = typeof window !== 'undefined';
+export interface RegisterCredentials {
+  username: string;
+  email: string;
+  password: string;
+}
 
-const persistToken = (key: string, value?: string) => {
-  if (!isBrowser) {
-    return;
-  }
-  
+export async function login(credentials: LoginCredentials): Promise<AuthTokens> {
   try {
-        if (value) {
-      window.localStorage.setItem(key, value);
-    } else {
-      window.localStorage.removeItem(key);
-    }
+    const { data } = await apiClient.post("/auth/login", credentials);
+    return data;
   } catch (error) {
-    console.warn(`[auth] Impossible de gérer ${key} dans localStorage`, error);
-    }
-};
-
-export const loginUser = async (email: string, password: string): Promise<AuthTokens> => {
-  try {
-    const response = await apiClient.post('/auth/login', { email, password });
-    const tokens = unwrapApiResponse<AuthTokens | null>(response.data);
-
-    if (!tokens || !tokens.access_token) {
-      throw new Error("Réponse de connexion invalide renvoyée par l'API.");
-    }
-
-    persistToken(ACCESS_TOKEN_KEY, tokens.access_token);
-
-    if (tokens.refresh_token) {
-      persistToken(REFRESH_TOKEN_KEY, tokens.refresh_token);
-    }
-
-    return tokens;
-  } catch (error) {
-    throw new Error(handleApiError(error));
+    handleApiError(error as any);
   }
-};
+}
 
-export const registerUser = async (email: string, password: string): Promise<void> => {
+export async function register(credentials: RegisterCredentials): Promise<AuthTokens> {
   try {
-    await apiClient.post('/auth/register', { email, password });
+    const { data } = await apiClient.post("/auth/register", credentials);
+    return data;
   } catch (error) {
-    throw new Error(handleApiError(error));
+    handleApiError(error as any);
   }
-};
+}
+
+export async function refreshToken(token: string): Promise<AuthTokens> {
+  try {
+    const { data } = await apiClient.post("/auth/refresh", { token });
+    return data;
+  } catch (error) {
+    handleApiError(error as any);
+  }
+}
