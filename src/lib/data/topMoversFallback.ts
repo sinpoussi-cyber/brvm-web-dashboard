@@ -1,89 +1,57 @@
 import type { TopCompany } from '@/types/api';
 
+import { getFallbackCompanies } from './companiesFallback';
+
 const freeze = <T>(value: T): T => Object.freeze(value);
 
-export const fallbackTopGainers: TopCompany[] = freeze([
+const asTopCompany = (company: TopCompany): TopCompany =>
   freeze({
-    symbol: 'BOABF',
-    name: 'Bank of Africa Burkina Faso',
-    current_price: 3890,
-    change: 150,
-    change_percent: 4.01,
-    volume: 1520,
-  }),
-  freeze({
-    symbol: 'ECOC',
-    name: 'Ecobank Côte d’Ivoire',
-    current_price: 6400,
-    change: 220,
-    change_percent: 3.56,
-    volume: 980,
-  }),
-  freeze({
-    symbol: 'ONTBF',
-    name: 'Onatel Burkina Faso',
-    current_price: 3400,
-    change: 95,
-    change_percent: 2.87,
-    volume: 455,
-  }),
-  freeze({
-    symbol: 'PALC',
-    name: 'Palm Côte d’Ivoire',
-    current_price: 1220,
-    change: 30,
-    change_percent: 2.52,
-    volume: 1210,
-  }),
-  freeze({
-    symbol: 'SICC',
-    name: 'SICOR Côte d’Ivoire',
-    current_price: 4450,
-    change: 105,
-    change_percent: 2.42,
-    volume: 300,
-  }),
-]);
+    symbol: company.symbol,
+    name: company.name,
+    current_price: company.current_price,
+    change: company.change,
+    change_percent: company.change_percent,
+    volume: company.volume,
+  });
 
-export const fallbackTopLosers: TopCompany[] = freeze([
-  freeze({
-    symbol: 'FTSC',
-    name: 'FILTISAC',
-    current_price: 1010,
-    change: -70,
-    change_percent: -6.48,
-    volume: 520,
-  }),
-  freeze({
-    symbol: 'BICC',
-    name: 'BICI Côte d’Ivoire',
-    current_price: 7200,
-    change: -310,
-    change_percent: -4.13,
-    volume: 640,
-  }),
-  freeze({
-    symbol: 'SVOC',
-    name: 'Société Ivoirienne de Câbles',
-    current_price: 910,
-    change: -35,
-    change_percent: -3.70,
-    volume: 890,
-  }),
-  freeze({
-    symbol: 'TTS',
-    name: 'Total Sénégal',
-    current_price: 2550,
-    change: -80,
-    change_percent: -3.04,
-    volume: 410,
-  }),
-  freeze({
-    symbol: 'UNXC',
-    name: 'Unilever Côte d’Ivoire',
-    current_price: 5750,
-    change: -160,
-    change_percent: -2.70,
-    volume: 275,
-  }),
-]);
+const buildTopMovers = (direction: 'gainers' | 'losers'): TopCompany[] => {
+  const companies = getFallbackCompanies();
+
+  const candidates = companies
+    .filter(
+      (company) =>
+        typeof company.price_change_percent === 'number' &&
+        typeof company.price_change === 'number' &&
+        typeof company.current_price === 'number'
+    )
+    .map((company) => ({
+      symbol: company.symbol,
+      name: company.name,
+      current_price: company.current_price as number,
+      change: company.price_change as number,
+      change_percent: company.price_change_percent as number,
+      volume: typeof company.volume === 'number' ? company.volume : undefined,
+    }));
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const sorted = candidates.sort((a, b) => {
+    const first = a.change_percent ?? 0;
+    const second = b.change_percent ?? 0;
+
+    if (direction === 'gainers') {
+      return second - first;
+    }
+
+    return first - second;
+  });
+
+  const slice = sorted.slice(0, 5).map(asTopCompany);
+
+  return freeze(slice);
+};
+
+export const fallbackTopGainers: TopCompany[] = buildTopMovers('gainers');
+export const fallbackTopLosers: TopCompany[] = buildTopMovers('losers');
