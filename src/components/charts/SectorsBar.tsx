@@ -1,5 +1,5 @@
 "use client";
-import { Sector } from "../../types/market";
+import type { Sector } from "../../types/market";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function SectorsBar({ data }: { data: Sector[] }) {
@@ -12,10 +12,13 @@ export default function SectorsBar({ data }: { data: Sector[] }) {
             <XAxis dataKey="sector" />
             <YAxis />
             <Tooltip />
-            <Bar dataKey="total_volume" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+            <Bar dataKey="total_volume" radius={[8, 8, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
+      {(!data || data.length === 0) && (
+        <p className="text-sm text-slate-400 mt-3">Aucune donnée secteur</p>
+      )}
     </div>
   );
 }
