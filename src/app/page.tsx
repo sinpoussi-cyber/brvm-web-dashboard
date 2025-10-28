@@ -2,6 +2,23 @@ import { api } from "@/lib/api";
 import { KPI } from "@/components/KPI";
 import { TopTable } from "@/components/TopTable";
 import { SectorsBar } from "@/components/SectorsBar";
+import { LogsViewer } from "@/components/LogsViewer";
+
+const sampleBuildLogs = [
+  "Find in logs",
+  "CtrlF",
+  "Running build in Washington, D.C., USA (East) – iad1",
+  "Build machine configuration: 2 cores, 8 GB",
+  "Cloning github.com/sinpoussi-cyber/brvm-web-dashboard (Branch: main, Commit: 37c5309)",
+  "Cloning completed: 237.000ms",
+  "Restored build cache from previous deployment (XqZUiMChqaiKtW5Qo9E42QhAh53k)",
+  "Running \"vercel build\"",
+  "Vercel CLI 48.6.0",
+  "Running \"install\" command: `npm install --legacy-peer-deps`...",
+  "removed 302 packages, changed 1 package, and audited 178 packages in 4s",
+  "35 packages are looking for funding",
+  "  run `npm fund` for details",
+];
 
 export const revalidate = 0;
 
@@ -30,9 +47,10 @@ export default async function Page() {
           <KPI label="Sociétés" value={tot} hint="Couvrant l'agrégat" />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="xl:col-span-2 space-y-4">
             <SectorsBar data={overview.top_sectors || []} />
+            <LogsViewer logs={sampleBuildLogs} />
           </div>
           <div className="space-y-4">
             <TopTable title="Top Gagnants" rows={gainers.data?.slice(0, 10) || []} />
