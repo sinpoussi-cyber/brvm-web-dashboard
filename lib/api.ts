@@ -80,3 +80,17 @@ export async function fetchIndices10m() {
   }
   return data || [];
 }
+/** Variations journalières et YTD des indices */
+export async function fetchIndicesVariations() {
+  try {
+    const { data, error } = await supabase.rpc('indices_variations');
+    if (error) {
+      console.error('Erreur RPC indices_variations', error.message);
+      return null;
+    }
+    return data && data.length > 0 ? data[0] : null;
+  } catch (err) {
+    console.error('Erreur réseau fetchIndicesVariations', err);
+    return null;
+  }
+}
