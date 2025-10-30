@@ -71,3 +71,12 @@ export async function fetchMeta() {
   const companies = (companiesCntQ as any)?.count ?? companiesCntQ.data?.length ?? 0;
   return { lastDate, companies };
 }
+/** Indices 10 derniers mois (tous à la fois via Supabase RPC) */
+export async function fetchIndices10m() {
+  const { data, error } = await supabase.rpc('indices_last_10m');
+  if (error) {
+    console.error('Erreur RPC indices_last_10m', error.message);
+    return [];
+  }
+  return data || [];
+}
