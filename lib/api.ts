@@ -94,3 +94,17 @@ export async function fetchIndicesVariations() {
     return null;
   }
 }
+/** Capitalisation, Volume, Valeur moyenne annuelle sur 10 mois */
+export async function fetchMarketMetrics10m() {
+  try {
+    const { data, error } = await supabase.rpc('market_metrics_last_10m');
+    if (error) {
+      console.error('Erreur RPC market_metrics_last_10m', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.error('Erreur réseau fetchMarketMetrics10m', err);
+    return [];
+  }
+}
