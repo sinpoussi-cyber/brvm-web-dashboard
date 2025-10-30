@@ -1,6 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { fetchIndices10m, fetchIndicesVariations } from '@/lib/api';
+import {
+  fetchIndices10m,
+  fetchIndicesVariations,
+  fetchMarketMetrics10m
+} from '@/lib/api';
 import Card from '@/components/ui/Card';
 import {
   LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
@@ -15,24 +19,37 @@ type IndiceRow = {
   brvm_croissance: number;
 };
 
+type MarketMetricsRow = {
+  mois: string;
+  capitalisation_globale: number;
+  volume_moyen_annuel: number;
+  valeur_moyenne_annuelle: number;
+};
+
 const COLORS = {
-  composite: '#2563eb', // bleu
-  brvm30: '#16a34a',     // vert
-  prestige: '#9333ea',   // violet
-  croissance: '#f97316', // orange
+  composite: '#2563eb',
+  brvm30: '#16a34a',
+  prestige: '#9333ea',
+  croissance: '#f97316',
+  capitalisation: '#1d4ed8',
+  volume: '#22c55e',
+  valeur: '#f59e0b'
 };
 
 export default function TechnicalIndicesPage() {
   const [data, setData] = useState<IndiceRow[]>([]);
   const [selected, setSelected] = useState<'composite' | 'brvm30' | 'prestige' | 'croissance'>('composite');
   const [variations, setVariations] = useState<any>(null);
+  const [marketData, setMarketData] = useState<MarketMetricsRow[]>([]);
 
   useEffect(() => {
     (async () => {
       const d = await fetchIndices10m();
       const v = await fetchIndicesVariations();
+      const m = await fetchMarketMetrics10m();
       setData(d);
       setVariations(v);
+      setMarketData(m);
     })();
   }, []);
 
@@ -70,7 +87,7 @@ export default function TechnicalIndicesPage() {
 
   return (
     <div className="space-y-10">
-      {/* === SECTION 1 : Graphique 10 mois === */}
+      {/* === SECTION 1 : Indices sur 10 mois === */}
       <div>
         <div className="text-3xl font-bold mb-2">Analyse Technique — Indices BRVM</div>
         <p className="text-gray-600 mb-4">Évolution moyenne mensuelle sur les 10 derniers mois.</p>
@@ -120,7 +137,7 @@ export default function TechnicalIndicesPage() {
         </Card>
       </div>
 
-      {/* === SECTION 2 : Variations journalières et YTD === */}
+      {/* === SECTION 2 : Variations Journalières / YTD === */}
       <div>
         <div className="text-2xl font-bold mb-2">Variations Journalières et YTD</div>
         <p className="text-gray-600 mb-4">Comparaison des évolutions les plus récentes.</p>
@@ -139,6 +156,31 @@ export default function TechnicalIndicesPage() {
                 <Bar dataKey="journaliere" fill="#0ea5e9" name="Variation Journalière (%)" />
                 <Bar dataKey="ytd" fill="#f59e0b" name="Variation YTD (%)" />
               </BarChart>
+            </ResponsiveContainer>
+          )}
+        </Card>
+      </div>
+
+      {/* === SECTION 3 : Capitalisation, Volume, Valeur === */}
+      <div>
+        <div className="text-2xl font-bold mb-2">Capitalisation, Volume & Valeur Moyenne</div>
+        <p className="text-gray-600 mb-4">Moyennes mensuelles sur 10 mois — Indicateurs macro du marché.</p>
+
+        <Card>
+          {marketData.length === 0 ? (
+            <div className="text-center text-gray-500 py-10">Chargement des métriques de marché...</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={400}>
+              <LineChart data={marketData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="mois" tickFormatter={(m) => m.slice(0, 7)} />
+                <YAxis domain={['auto', 'auto']} />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="capitalisation_globale" stroke={COLORS.capitalisation} strokeWidth={3} dot={{ r: 4 }} name="Capitalisation Globale (Mds FCFA)" />
+                <Line type="monotone" dataKey="volume_moyen_annuel" stroke={COLORS.volume} strokeWidth={3} dot={{ r: 4 }} name="Volume Moyen Annuel" />
+                <Line type="monotone" dataKey="valeur_moyenne_annuelle" stroke={COLORS.valeur} strokeWidth={3} dot={{ r: 4 }} name="Valeur Moyenne Annuelle" />
+              </LineChart>
             </ResponsiveContainer>
           )}
         </Card>
