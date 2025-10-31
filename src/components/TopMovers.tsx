@@ -1,55 +1,55 @@
 // src/components/TopMovers.tsx
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { fetchTopGainers, fetchTopLosers } from '@/src/lib/api';
+import React from 'react';
+import type { TopMove } from '@/types';
 
-type Item = { symbol: string; latest_price: number; change_percent: number };
+function Table({ rows, title }: { rows: TopMove[]; title: string }) {
+  return (
+    <div className="rounded-2xl border p-4 shadow-sm bg-white">
+      <div className="text-sm font-medium mb-3">{title}</div>
+      <div className="overflow-x-auto">
+        <table className="min-w-[400px] w-full text-sm">
+          <thead>
+            <tr className="text-left text-gray-500">
+              <th className="py-2">Symbole</th>
+              <th className="py-2">Cours</th>
+              <th className="py-2">Variation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.symbol} className="border-t">
+                <td className="py-2 font-medium">{r.symbol}</td>
+                <td className="py-2">{r.latest_price.toLocaleString()}</td>
+                <td className={`py-2 font-semibold ${r.change_percent >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {r.change_percent.toFixed(2)}%
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td className="py-4 text-gray-400" colSpan={3}>Aucune donnée</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
-export default function TopMovers() {
-  const [gainers, setGainers] = useState<Item[]>([]);
-  const [losers, setLosers] = useState<Item[]>([]);
-  const [err, setErr] = useState<string|undefined>();
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const [g, l] = await Promise.all([fetchTopGainers(), fetchTopLosers()]);
-        setGainers(g.data || []);
-        setLosers(l.data || []);
-      } catch (e: any) {
-        setErr('Impossible de charger les tops (API backend).');
-      }
-    })();
-  }, []);
-
+export function TopMovers({
+  gainers,
+  losers,
+}: {
+  gainers: TopMove[];
+  losers: TopMove[];
+}) {
   return (
     <div className="grid md:grid-cols-2 gap-4">
-      <div className="rounded-2xl p-4 shadow bg-white">
-        <div className="text-lg font-semibold">Top 10 Gagnants</div>
-        <div className="divide-y mt-2">
-          {gainers.map((it, i) => (
-            <div key={i} className="flex items-center justify-between py-2">
-              <span className="font-medium">{it.symbol}</span>
-              <span className="text-gray-500">{it.latest_price}</span>
-              <span className="text-green-600">+{it.change_percent}%</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="rounded-2xl p-4 shadow bg-white">
-        <div className="text-lg font-semibold">Top 10 Perdants</div>
-        <div className="divide-y mt-2">
-          {losers.map((it, i) => (
-            <div key={i} className="flex items-center justify-between py-2">
-              <span className="font-medium">{it.symbol}</span>
-              <span className="text-gray-500">{it.latest_price}</span>
-              <span className="text-red-600">{it.change_percent}%</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      {err && <div className="md:col-span-2 text-sm text-red-600">{err}</div>}
+      <Table rows={gainers} title="Top 10 Hausse" />
+      <Table rows={losers} title="Top 10 Baisse" />
     </div>
   );
 }
