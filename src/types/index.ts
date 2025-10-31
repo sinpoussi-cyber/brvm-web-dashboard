@@ -16,3 +16,11 @@ export type TopMove = {
 export type TopMovesResponse = {
   data: TopMove[];
 };
+// src/types/index.ts
+export type IndexKey = 'composite' | 'brvm_30' | 'prestige' | 'croissance';
+
+export interface TopMove {
+  symbol: string;
+  latest_price: number;
+  change_percent: number;
+}
