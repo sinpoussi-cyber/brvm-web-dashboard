@@ -2,61 +2,70 @@
 'use client';
 
 import React, { useState } from 'react';
-import { registerUser } from '@/src/lib/api';
+import { signupPublicUser } from '@/lib/supabase';
 
 export default function SignupForm() {
-  const [form, setForm] = useState({
-    first_name: '', last_name: '', email: '', phone: '',
-    profession: '', age_bracket: '', gender: ''
-  });
-  const [ok, setOk] = useState<string|undefined>();
-  const [err, setErr] = useState<string|undefined>();
   const [loading, setLoading] = useState(false);
+  const [ok, setOk] = useState<string| null>(null);
+  const [err, setErr] = useState<string| null>(null);
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true); setErr(undefined); setOk(undefined);
+  async function onSubmit(formData: FormData) {
+    setLoading(true);
+    setOk(null);
+    setErr(null);
     try {
-      await registerUser(form);
-      setOk('Inscription enregistrée ✅');
-      setForm({ first_name:'', last_name:'', email:'', phone:'', profession:'', age_bracket:'', gender:'' });
-    } catch {
-      setErr("Échec de l'inscription (Supabase/RLS).");
+      const payload = {
+        first_name: String(formData.get('first_name') || ''),
+        last_name: String(formData.get('last_name') || ''),
+        email: String(formData.get('email') || ''),
+        phone: String(formData.get('phone') || ''),
+        profession: String(formData.get('profession') || ''),
+        age_bracket: String(formData.get('age_bracket') || ''),
+        gender: String(formData.get('gender') || ''),
+      };
+      await signupPublicUser(payload);
+      setOk('Inscription réussie !');
+    } catch (e: any) {
+      setErr(e?.message || 'Erreur inconnue');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="rounded-2xl p-4 shadow bg-white">
-      <div className="text-lg font-semibold mb-2">Ouvrir un compte</div>
-      <form onSubmit={onSubmit} className="grid md:grid-cols-2 gap-3">
-        <input className="border rounded-lg p-2" placeholder="Nom"
-          value={form.last_name} onChange={e=>setForm({...form,last_name:e.target.value})}/>
-        <input className="border rounded-lg p-2" placeholder="Prénom"
-          value={form.first_name} onChange={e=>setForm({...form,first_name:e.target.value})}/>
-        <input className="border rounded-lg p-2" placeholder="Email"
-          value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/>
-        <input className="border rounded-lg p-2" placeholder="Téléphone"
-          value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/>
-        <input className="border rounded-lg p-2" placeholder="Profession"
-          value={form.profession} onChange={e=>setForm({...form,profession:e.target.value})}/>
-        <input className="border rounded-lg p-2" placeholder="Tranche d’âge"
-          value={form.age_bracket} onChange={e=>setForm({...form,age_bracket:e.target.value})}/>
-        <input className="border rounded-lg p-2" placeholder="Sexe"
-          value={form.gender} onChange={e=>setForm({...form,gender:e.target.value})}/>
-        <div className="md:col-span-2">
-          <button disabled={loading} className="px-4 py-2 rounded-xl bg-black text-white">
-            {loading ? 'Enregistrement…' : "S'inscrire"}
-          </button>
-        </div>
-        {ok && <div className="md:col-span-2 text-green-700 text-sm">{ok}</div>}
-        {err && <div className="md:col-span-2 text-red-600 text-sm">{err}</div>}
+    <div className="rounded-2xl border p-4 shadow-sm bg-white">
+      <div className="text-sm font-medium mb-3">Créer un compte</div>
+      <form action={onSubmit} className="grid md:grid-cols-2 gap-3">
+        <input name="first_name" placeholder="Prénom" className="border rounded-xl p-3" required />
+        <input name="last_name" placeholder="Nom" className="border rounded-xl p-3" required />
+        <input name="email" type="email" placeholder="Email" className="border rounded-xl p-3" />
+        <input name="phone" placeholder="Téléphone" className="border rounded-xl p-3" />
+        <input name="profession" placeholder="Profession" className="border rounded-xl p-3 md:col-span-2" />
+        <select name="age_bracket" className="border rounded-xl p-3">
+          <option value="">Tranche d’âge</option>
+          <option value="18-24">18–24</option>
+          <option value="25-34">25–34</option>
+          <option value="35-44">35–44</option>
+          <option value="45-54">45–54</option>
+          <option value="55+">55+</option>
+        </select>
+        <select name="gender" className="border rounded-xl p-3">
+          <option value="">Sexe</option>
+          <option value="H">Homme</option>
+          <option value="F">Femme</option>
+          <option value="N/A">Non précisé</option>
+        </select>
+
+        <button
+          disabled={loading}
+          className="mt-1 md:col-span-2 rounded-xl bg-black text-white py-3 font-medium hover:opacity-90 disabled:opacity-50"
+        >
+          {loading ? 'En cours...' : 'S’enregistrer'}
+        </button>
       </form>
 
-      <div className="mt-4 text-xs text-gray-500">
-        Paiement OM/Wave/Visa : à intégrer (front) → passerelle côté backend.
-      </div>
+      {ok && <div className="mt-3 text-emerald-600 text-sm">{ok}</div>}
+      {err && <div className="mt-3 text-red-600 text-sm">{err}</div>}
     </div>
   );
 }
