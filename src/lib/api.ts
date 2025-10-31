@@ -68,3 +68,55 @@ export async function registerUser(form: SignupForm) {
   if (error) throw error;
   return { ok: true };
 }
+// src/lib/api.ts
+const BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') || '';
+
+async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const url = `${BASE}${path}`;
+  const res = await fetch(url, {
+    // Force revalidation en SSR et ISR friendly
+    cache: 'no-store',
+    headers: { 'Accept': 'application/json' },
+    ...init,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`API ${url} -> ${res.status} ${res.statusText} ${text}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+/** GET /api/v1/market/overview */
+export async function fetchMarketOverview() {
+  return jsonFetch<{
+    last_update?: string;
+    indices?: {
+      brvm_composite?: number;
+      brvm_30?: number;
+      brvm_prestige?: number;
+      brvm_croissance?: number;
+    };
+    capitalisation_globale?: number;
+    volume_moyen_annuel?: number;
+    valeur_moyenne_annuelle?: number;
+    total_companies?: number;
+  }>('/api/v1/market/overview');
+}
+
+/** GET /api/v1/market/gainers/top */
+export async function fetchTopGainers(limit = 10) {
+  const data = await jsonFetch<{ data: { symbol: string; latest_price: number; change_percent: number }[] }>(
+    `/api/v1/market/gainers/top?limit=${limit}`
+  );
+  return data.data;
+}
+
+/** GET /api/v1/market/losers/top */
+export async function fetchTopLosers(limit = 10) {
+  const data = await jsonFetch<{ data: { symbol: string; latest_price: number; change_percent: number }[] }>(
+    `/api/v1/market/losers/top?limit=${limit}`
+  );
+  return data.data;
+}
+
+export { BASE as API_BASE_URL };
