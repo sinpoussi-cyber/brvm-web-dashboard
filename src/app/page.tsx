@@ -1,76 +1,61 @@
-import { api } from "@/lib/api";
-import { KPI } from "@/components/KPI";
-import { TopTable } from "@/components/TopTable";
-import { SectorsBar } from "@/components/SectorsBar";
-import { LogsViewer } from "@/components/LogsViewer";
+// src/app/page.tsx
+import React from 'react';
+import StatsCards from '@/src/components/StatsCards';
+import IndexSwitcher from '@/src/components/IndexSwitcher';
+import TopMovers from '@/src/components/TopMovers';
+import SignupForm from '@/src/components/SignupForm';
+import { fetchOverview } from '@/src/lib/api';
+import { supabase } from '@/src/lib/supabaseClient';
 
-const sampleBuildLogs = [
-  "Find in logs",
-  "CtrlF",
-  "Running build in Washington, D.C., USA (East) – iad1",
-  "Build machine configuration: 2 cores, 8 GB",
-  "Cloning github.com/sinpoussi-cyber/brvm-web-dashboard (Branch: main, Commit: 344741e)",
-  "Cloning completed: 323.000ms",
-  "Restored build cache from previous deployment (9apeydAf6FXYZqmSkNxjMEZ3GSkt)",
-  "Running \"vercel build\"",
-  "Vercel CLI 48.6.0",
-  "Running \"install\" command: `npm install --legacy-peer-deps`...",
-  "up to date, audited 182 packages in 2s",
-  "35 packages are looking for funding",
-  "  run `npm fund` for details",
-  "1 critical severity vulnerability",
-  "To address all issues, run:",
-];
+export const revalidate = 60;
 
-export const revalidate = 0;
-
-async function loadAll() {
-  const [overview, gainers, losers] = await Promise.all([
-    api.getOverview(),
-    api.getTopGainers(),
-    api.getTopLosers(),
+export default async function HomePage() {
+  // Récupération parallèle : backend overview (API Render) + snapshot Supabase
+  const [overview, homeSnap] = await Promise.all([
+    fetchOverview().catch(()=>null),
+    supabase.rpc('home_latest_snapshot').then(({data}) => Array.isArray(data) ? data[0] : data).catch(()=>null)
   ]);
-  return { overview, gainers, losers };
-}
 
-export default async function Page() {
-  try {
-    const { overview, gainers, losers } = await loadAll();
+  const lastDate = homeSnap?.last_extraction_date || null;
+  const cap = homeSnap?.capitalisation_globale ?? undefined;
+  const vol = homeSnap?.volume_moyen_annuel ?? undefined;
+  const val = homeSnap?.valeur_moyenne_annuelle ?? undefined;
 
-    const avg = overview.overview.avg_change_percent ?? 0;
-    const vol = overview.overview.total_volume ?? 0;
-    const tot = overview.overview.total_companies ?? 0;
+  const totalCompanies = overview?.overview?.total_companies ?? undefined;
+  // Si ton backend fournit YTD Composite dans overview → sinon laisse undefined
+  const ytdComposite = overview?.overview?.ytd_composite ?? undefined;
 
-    return (
-      <main className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <KPI label="Perf. moyenne" value={`${avg.toFixed(2)}%`} hint="Session en cours" />
-          <KPI label="Volume total" value={vol.toLocaleString("fr-FR")} hint="Titres échangés" />
-          <KPI label="Sociétés" value={tot} hint="Couvrant l'agrégat" />
-        </div>
+  return (
+    <main className="max-w-6xl mx-auto p-4 space-y-6">
+      <header className="rounded-2xl p-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+        <h1 className="text-2xl font-bold">BRVM — Accueil</h1>
+        <p className="text-sm opacity-90">
+          Dernières tendances du marché, tops, et inscription utilisateur.
+        </p>
+      </header>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div className="xl:col-span-2 space-y-4">
-            <SectorsBar data={overview.top_sectors || []} />
-            <LogsViewer logs={sampleBuildLogs} />
-          </div>
-          <div className="space-y-4">
-            <TopTable title="Top Gagnants" rows={gainers.data?.slice(0, 10) || []} />
-            <TopTable title="Top Perdants" rows={losers.data?.slice(0, 10) || []} />
-          </div>
-        </div>
-      </main>
-    );
-  } catch (err: any) {
-    return (
-      <main className="space-y-4">
-        <div className="card">
-          <div className="text-lg font-semibold mb-2">Erreur de connexion</div>
-          <pre className="text-sm whitespace-pre-wrap text-red-700">
-            {err?.message || "Erreur inconnue."}
-          </pre>
-        </div>
-      </main>
-    );
-  }
+      <StatsCards
+        lastDate={lastDate ?? undefined}
+        totalCompanies={totalCompanies}
+        cap={cap}
+        vol={vol}
+        val={val}
+        ytdComposite={ytdComposite}
+      />
+
+      <IndexSwitcher />
+
+      <TopMovers />
+
+      <SignupForm />
+
+      <section className="rounded-2xl p-4 shadow bg-white">
+        <div className="text-lg font-semibold">Résumé analyse fonda. & technique</div>
+        <p className="text-sm text-gray-600 mt-2">
+          À connecter à tes endpoints/SQL dédiés (par ex. vues agrégées Supabase ou endpoints Render).
+          Pour l’instant c’est un placeholder.
+        </p>
+      </section>
+    </main>
+  );
 }
