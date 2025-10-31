@@ -1,61 +1,56 @@
 // src/app/page.tsx
-import React from 'react';
-import StatsCards from '@/src/components/StatsCards';
-import IndexSwitcher from '@/src/components/IndexSwitcher';
-import TopMovers from '@/src/components/TopMovers';
-import SignupForm from '@/src/components/SignupForm';
-import { fetchOverview } from '@/src/lib/api';
-import { supabase } from '@/src/lib/supabaseClient';
-
-export const revalidate = 60;
+import { fetchMarketOverview, fetchTopGainers, fetchTopLosers } from '@/lib/api';
+import { fetchCompositeLast20d } from '@/lib/supabase';
+import { KpiCard } from '@/components/KpiCard';
+import { IndexCard } from '@/components/IndexCard';
+import { TopMovers } from '@/components/TopMovers';
+import CompositeChart from '@/components/CompositeChart';
+import SignupForm from '@/components/SignupForm';
 
 export default async function HomePage() {
-  // Récupération parallèle : backend overview (API Render) + snapshot Supabase
-  const [overview, homeSnap] = await Promise.all([
-    fetchOverview().catch(()=>null),
-    supabase.rpc('home_latest_snapshot').then(({data}) => Array.isArray(data) ? data[0] : data).catch(()=>null)
+  // Backend Render
+  const [overview, gainers, losers] = await Promise.all([
+    fetchMarketOverview(),
+    fetchTopGainers(10),
+    fetchTopLosers(10),
   ]);
 
-  const lastDate = homeSnap?.last_extraction_date || null;
-  const cap = homeSnap?.capitalisation_globale ?? undefined;
-  const vol = homeSnap?.volume_moyen_annuel ?? undefined;
-  const val = homeSnap?.valeur_moyenne_annuelle ?? undefined;
+  // RPC Supabase (Composite 20j)
+  const composite20d = await fetchCompositeLast20d();
 
-  const totalCompanies = overview?.overview?.total_companies ?? undefined;
-  // Si ton backend fournit YTD Composite dans overview → sinon laisse undefined
-  const ytdComposite = overview?.overview?.ytd_composite ?? undefined;
+  const lastUpdate = overview.last_update ? new Date(overview.last_update).toLocaleDateString() : '—';
 
   return (
-    <main className="max-w-6xl mx-auto p-4 space-y-6">
-      <header className="rounded-2xl p-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
-        <h1 className="text-2xl font-bold">BRVM — Accueil</h1>
-        <p className="text-sm opacity-90">
-          Dernières tendances du marché, tops, et inscription utilisateur.
-        </p>
-      </header>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl md:text-3xl font-semibold">Marché BRVM — Vue d’ensemble</h1>
+        <p className="text-gray-500 text-sm">Dernière date enregistrée : {lastUpdate} • Sociétés cotées : {overview.total_companies ?? '—'}</p>
+      </div>
 
-      <StatsCards
-        lastDate={lastDate ?? undefined}
-        totalCompanies={totalCompanies}
-        cap={cap}
-        vol={vol}
-        val={val}
-        ytdComposite={ytdComposite}
-      />
+      {/* Indices */}
+      <div className="grid md:grid-cols-4 gap-4">
+        <IndexCard label="BRVM Composite" value={overview.indices?.brvm_composite} />
+        <IndexCard label="BRVM 30" value={overview.indices?.brvm_30} />
+        <IndexCard label="BRVM Prestige" value={overview.indices?.brvm_prestige} />
+        <IndexCard label="BRVM Croissance" value={overview.indices?.brvm_croissance} />
+      </div>
 
-      <IndexSwitcher />
+      {/* KPIs */}
+      <div className="grid md:grid-cols-3 gap-4">
+        <KpiCard title="Capitalisation Globale" value={overview.capitalisation_globale?.toLocaleString()} sub="Dernière valeur" />
+        <KpiCard title="Volume Moyen Annuel" value={overview.volume_moyen_annuel?.toLocaleString()} sub="Dernière valeur" />
+        <KpiCard title="Valeur Moyenne Annuelle" value={overview.valeur_moyenne_annuelle?.toLocaleString()} sub="Dernière valeur" />
+      </div>
 
-      <TopMovers />
+      {/* Graphique Composite 20 jours */}
+      <CompositeChart data={composite20d} />
 
+      {/* Top Movers */}
+      <TopMovers gainers={gainers} losers={losers} />
+
+      {/* Formulaire d’inscription */}
       <SignupForm />
-
-      <section className="rounded-2xl p-4 shadow bg-white">
-        <div className="text-lg font-semibold">Résumé analyse fonda. & technique</div>
-        <p className="text-sm text-gray-600 mt-2">
-          À connecter à tes endpoints/SQL dédiés (par ex. vues agrégées Supabase ou endpoints Render).
-          Pour l’instant c’est un placeholder.
-        </p>
-      </section>
-    </main>
+    </div>
   );
 }
