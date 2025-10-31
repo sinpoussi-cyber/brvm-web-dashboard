@@ -1,0 +1,16 @@
+export const sampleDeploymentLogs = [
+  "Find in logs",
+  "CtrlF",
+  "Running build in Washington, D.C., USA (East) – iad1",
+  "Build machine configuration: 2 cores, 8 GB",
+  "Cloning github.com/sinpoussi-cyber/brvm-web-dashboard (Branch: main, Commit: c474df6)",
+  "Cloning completed: 441.000ms",
+  "Restored build cache from previous deployment (Egmh6pMWZZVSrEHoqt4d86y3xjcq)",
+  "Running \"vercel build\"",
+  "Vercel CLI 48.6.7",
+  "Running \"install\" command: `npm install --legacy-peer-deps`...",
+  "up to date, audited 146 packages in 2s",
+  "35 packages are looking for funding",
+  "  run `npm fund` for details",
+  "1 critical severity vulnerability",
+];
