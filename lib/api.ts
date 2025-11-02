@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, hasSupabase } from './supabase';
 import type { Overview, TopMove, IndexPoint } from '@/types/market';
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') || '';
@@ -17,6 +17,13 @@ export async function fetchOverview(): Promise<Overview> {
   if (api?.overview) return api.overview;
 
   // 2) Fallback Supabase (total_companies & last volume approximé)
+  if (!hasSupabase) {
+    return {
+      avg_change_percent: 0,
+      total_volume: 0,
+      total_companies: 0,
+    };
+  }
   const [{ data: companiesCnt }, { data: volAgg }] = await Promise.all([
     supabase.from('companies').select('id', { count: 'exact', head: true }),
     supabase.from('historical_data')
@@ -31,12 +38,12 @@ export async function fetchOverview(): Promise<Overview> {
   };
 }
 
-export async function fetchTopGainers(): Promise<TopMove[]> {
-  const data = await get<{ data: TopMove[] }>('/api/v1/market/gainers/top');
+export async function fetchTopGainers(limit = 10): Promise<TopMove[]> {
+  const data = await get<{ data: TopMove[] }>(`/api/v1/market/gainers/top?limit=${limit}`);
   return data?.data ?? [];
 }
-export async function fetchTopLosers(): Promise<TopMove[]> {
-  const data = await get<{ data: TopMove[] }>('/api/v1/market/losers/top');
+export async function fetchTopLosers(limit = 10): Promise<TopMove[]> {
+  const data = await get<{ data: TopMove[] }>(`/api/v1/market/losers/top?limit=${limit}`);
   return data?.data ?? [];
 }
 
@@ -47,6 +54,7 @@ export async function fetchComposite20d(): Promise<IndexPoint[]> {
   if (api?.data) return api.data;
 
   // Fallback Supabase: somme des prix journaliers d’un panier (approximation robuste)
+  if (!hasSupabase) return [];
   const { data, error } = await supabase.rpc('composite_last_20d'); // si tu crées une RPC
   if (!error && Array.isArray(data)) return data as IndexPoint[];
 
@@ -63,6 +71,9 @@ export async function fetchComposite20d(): Promise<IndexPoint[]> {
 
 /** Métadonnées (dernière date & nb sociétés) */
 export async function fetchMeta() {
+  if (!hasSupabase) {
+    return { lastDate: null, companies: 0 };
+  }
   const [maxDateQ, companiesCntQ] = await Promise.all([
     supabase.from('historical_data').select('trade_date').order('trade_date', { ascending: false }).limit(1),
     supabase.from('companies').select('id', { count: 'exact', head: true }),
@@ -73,6 +84,7 @@ export async function fetchMeta() {
 }
 /** Indices 10 derniers mois (tous à la fois via Supabase RPC) */
 export async function fetchIndices10m() {
+  if (!hasSupabase) return [];
   const { data, error } = await supabase.rpc('indices_last_10m');
   if (error) {
     console.error('Erreur RPC indices_last_10m', error.message);
@@ -82,6 +94,7 @@ export async function fetchIndices10m() {
 }
 /** Variations journalières et YTD des indices */
 export async function fetchIndicesVariations() {
+  if (!hasSupabase) return null;
   try {
     const { data, error } = await supabase.rpc('indices_variations');
     if (error) {
@@ -96,6 +109,7 @@ export async function fetchIndicesVariations() {
 }
 /** Capitalisation, Volume, Valeur moyenne annuelle sur 10 mois */
 export async function fetchMarketMetrics10m() {
+    if (!hasSupabase) return [];
   try {
     const { data, error } = await supabase.rpc('market_metrics_last_10m');
     if (error) {
