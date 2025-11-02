@@ -1,124 +1,126 @@
-import { supabase, hasSupabase } from './supabase';
-import type { Overview, TopMove, IndexPoint } from '@/types/market';
+'use server';
 
-const BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') || '';
+import { supabase } from '@/lib/supabaseClient';
 
-async function get<T>(path: string): Promise<T | null> {
-  try {
-    const r = await fetch(`${BASE}${path}`, { next: { revalidate: 60 } });
-    if (!r.ok) return null;
-    return await r.json() as T;
-  } catch { return null; }
+/**
+ * =============================
+ *  📘 EDUCATION FINANCIÈRE
+ * =============================
+ */
+
+/** Liste des articles d’éducation financière */
+export async function getEducationArticles() {
+  const { data, error } = await supabase
+    .from('edu_articles')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
 }
 
-export async function fetchOverview(): Promise<Overview> {
-  // 1) Essaye l’API Render
-  const api = await get<{ overview: Overview }>('/api/v1/market/overview');
-  if (api?.overview) return api.overview;
+/**
+ * =============================
+ *  💹 SOCIÉTÉS / PREDICTIONS
+ * =============================
+ */
 
-  // 2) Fallback Supabase (total_companies & last volume approximé)
-  if (!hasSupabase) {
-    return {
-      avg_change_percent: 0,
-      total_volume: 0,
-      total_companies: 0,
-    };
-  }
-  const [{ data: companiesCnt }, { data: volAgg }] = await Promise.all([
-    supabase.from('companies').select('id', { count: 'exact', head: true }),
-    supabase.from('historical_data')
-      .select('value: value', { head: false })
-      .order('trade_date', { ascending: false }).limit(5000),
-  ]);
-  const totalVolume = (volAgg ?? []).reduce((s: any, r: any) => s + (r?.value ? 1 : 0), 0); // approxim.
-  return {
-    avg_change_percent: 0,
-    total_volume: totalVolume,
-    total_companies: companiesCnt?.length ? companiesCnt.length : (companiesCnt as any)?.count ?? 0,
-  };
+/** Liste des sociétés cotées (nom + symbole) */
+export async function getCompanies() {
+  const { data, error } = await supabase.from('companies').select('symbol,name').order('symbol');
+  if (error) throw error;
+  return data;
 }
 
-export async function fetchTopGainers(limit = 10): Promise<TopMove[]> {
-  const data = await get<{ data: TopMove[] }>(`/api/v1/market/gainers/top?limit=${limit}`);
-  return data?.data ?? [];
-}
-export async function fetchTopLosers(limit = 10): Promise<TopMove[]> {
-  const data = await get<{ data: TopMove[] }>(`/api/v1/market/losers/top?limit=${limit}`);
-  return data?.data ?? [];
+/** Historique + Prévisions pour une société (RPC Supabase) */
+export async function getCompanyPredictions(symbol: string) {
+  const { data, error } = await supabase.rpc('get_company_predictions', { symbol });
+  if (error) throw error;
+  return data;
 }
 
-/** Indice Composite: 20 derniers jours (API si dispo, sinon moyenne simple Supabase) */
-export async function fetchComposite20d(): Promise<IndexPoint[]> {
-  // Si demain tu exposes /api/v1/indices/composite/history?days=20, ça marchera
-  const api = await get<{ data: IndexPoint[] }>('/api/v1/indices/composite/history?days=20');
-  if (api?.data) return api.data;
-
-  // Fallback Supabase: somme des prix journaliers d’un panier (approximation robuste)
-  if (!hasSupabase) return [];
-  const { data, error } = await supabase.rpc('composite_last_20d'); // si tu crées une RPC
-  if (!error && Array.isArray(data)) return data as IndexPoint[];
-
-  // Fallback minimaliste: moyenne des prix par jour (sur une société “référence”)
-  const { data: d2 } = await supabase
-    .from('historical_data')
-    .select('trade_date, price')
-    .order('trade_date', { ascending: false })
-    .limit(20);
-  return (d2 ?? [])
-    .reverse()
-    .map((r: any, i: number) => ({ date: r.trade_date, value: Number(r.price) || (i ? i : 1) }));
+/** Résumés technique/fondamental + conseil global (RPC Supabase) */
+export async function getCompanyAnalysis(symbol: string) {
+  const { data, error } = await supabase.rpc('get_company_analysis', { symbol });
+  if (error) throw error;
+  return data?.[0] ?? null;
 }
 
-/** Métadonnées (dernière date & nb sociétés) */
-export async function fetchMeta() {
-  if (!hasSupabase) {
-    return { lastDate: null, companies: 0 };
-  }
-  const [maxDateQ, companiesCntQ] = await Promise.all([
-    supabase.from('historical_data').select('trade_date').order('trade_date', { ascending: false }).limit(1),
-    supabase.from('companies').select('id', { count: 'exact', head: true }),
-  ]);
-  const lastDate = maxDateQ.data?.[0]?.trade_date ?? null;
-  const companies = (companiesCntQ as any)?.count ?? companiesCntQ.data?.length ?? 0;
-  return { lastDate, companies };
+/**
+ * =============================
+ *  📊 RECOMMANDATIONS
+ * =============================
+ */
+
+/** Recommandations globales (Top/Flop/Achat/Vente/Conserver) */
+export async function getRecommendations() {
+  const { data, error } = await supabase.rpc('get_recommendations');
+  if (error) throw error;
+  return data;
 }
-/** Indices 10 derniers mois (tous à la fois via Supabase RPC) */
-export async function fetchIndices10m() {
-  if (!hasSupabase) return [];
-  const { data, error } = await supabase.rpc('indices_last_10m');
-  if (error) {
-    console.error('Erreur RPC indices_last_10m', error.message);
-    return [];
-  }
-  return data || [];
+
+/**
+ * =============================
+ *  🪙 PAIEMENTS / ABONNEMENT
+ * =============================
+ */
+
+/** Enregistrement manuel d’un paiement */
+export async function recordPayment(paymentData: {
+  transaction_id: string;
+  amount: number;
+  status: string;
+  user_email?: string;
+}) {
+  const { error } = await supabase.from('payments').insert([paymentData]);
+  if (error) throw error;
+  return { success: true };
 }
-/** Variations journalières et YTD des indices */
-export async function fetchIndicesVariations() {
-  if (!hasSupabase) return null;
-  try {
-    const { data, error } = await supabase.rpc('indices_variations');
-    if (error) {
-      console.error('Erreur RPC indices_variations', error.message);
-      return null;
-    }
-    return data && data.length > 0 ? data[0] : null;
-  } catch (err) {
-    console.error('Erreur réseau fetchIndicesVariations', err);
-    return null;
-  }
+
+/**
+ * =============================
+ *  🧑 UTILISATEURS
+ * =============================
+ */
+
+/** Enregistrement d’un nouvel utilisateur (inscription) */
+export async function registerUser(user: {
+  first_name: string;
+  last_name: string;
+  email?: string;
+  phone?: string;
+  profession?: string;
+  age_bracket?: string;
+  gender?: string;
+}) {
+  const { error } = await supabase.from('users').insert([user]);
+  if (error) throw error;
+  return { success: true };
 }
-/** Capitalisation, Volume, Valeur moyenne annuelle sur 10 mois */
-export async function fetchMarketMetrics10m() {
-    if (!hasSupabase) return [];
-  try {
-    const { data, error } = await supabase.rpc('market_metrics_last_10m');
-    if (error) {
-      console.error('Erreur RPC market_metrics_last_10m', error.message);
-      return [];
-    }
-    return data || [];
-  } catch (err) {
-    console.error('Erreur réseau fetchMarketMetrics10m', err);
-    return [];
-  }
+
+/** Liste des utilisateurs (si admin ou pour debug) */
+export async function getAllUsers() {
+  const { data, error } = await supabase.from('users').select('*');
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * =============================
+ *  🧮 INDICES DE MARCHÉ
+ * =============================
+ */
+
+/** Dernières moyennes 10 mois pour chaque indice */
+export async function getIndexEvolution(indexName: string) {
+  // indexName ∈ ['brvm_composite', 'brvm_30', 'brvm_prestige', 'brvm_croissance']
+  const { data, error } = await supabase.rpc(`${indexName}_avg_10m`);
+  if (error) throw error;
+  return data;
+}
+
+/** Derniers indicateurs du marché (capitalisation, volume, valeur, etc.) */
+export async function getMarketOverview() {
+  const { data, error } = await supabase.from('new_market_indicators').select('*').order('extraction_date', { ascending: false }).limit(1);
+  if (error) throw error;
+  return data?.[0];
 }
