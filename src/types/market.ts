@@ -14,3 +14,10 @@ export type GainerLoser = {
   latest_price: number;
   change_percent: number;
 };
+
+export type TopMove = GainerLoser;
+
+export type IndexPoint = {
+  date: string;
+  value: number;
+};
