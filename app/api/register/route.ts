@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { signupPublicUser } from '@/lib/supabase';
 
 export async function POST(req: Request) {
   const fd = await req.formData();
@@ -15,7 +15,11 @@ export async function POST(req: Request) {
   };
 
   // ATTENTION: nécessite une policy RLS insert autorisée pour le rôle anon sur table users
-  const { error } = await supabase.from('users').insert(payload);
-  if (error) return NextResponse.json({ ok:false, error: error.message }, { status: 400 });
-  return NextResponse.json({ ok:true });
+   try {
+    await signupPublicUser(payload as any);
+    return NextResponse.json({ ok: true });
+  } catch (error: any) {
+    const message = error?.message ?? 'Unable to register user';
+    return NextResponse.json({ ok: false, error: message }, { status: 400 });
+  }
 }
