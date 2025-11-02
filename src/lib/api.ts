@@ -1,4 +1,21 @@
 // src/lib/api.ts
+
+import { fetchIndexLast20d, fetchIndexMonthlyAvg10m } from './supabase';
+
+// Re-export the richer server-side helpers that live in /lib.
+// Those functions include Supabase fallbacks and are primarily used by the
+// new `app/` router pages.
+export {
+  fetchOverview,
+  fetchTopGainers,
+  fetchTopLosers,
+  fetchComposite20d,
+  fetchMeta,
+  fetchIndices10m,
+  fetchIndicesVariations,
+  fetchMarketMetrics10m,
+} from '../../lib/api';
+
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') || '';
 
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -32,19 +49,6 @@ export async function fetchMarketOverview() {
   }>('/api/v1/market/overview');
 }
 
-/** Top movers */
-export async function fetchTopGainers(limit = 10) {
-  const data = await jsonFetch<{ data: { symbol: string; latest_price: number; change_percent: number }[] }>(
-    `/api/v1/market/gainers/top?limit=${limit}`
-  );
-  return data.data;
-}
-export async function fetchTopLosers(limit = 10) {
-  const data = await jsonFetch<{ data: { symbol: string; latest_price: number; change_percent: number }[] }>(
-    `/api/v1/market/losers/top?limit=${limit}`
-  );
-  return data.data;
-}
 
 /** Fundamentals (global + by symbol) — adapter à ton API si besoin */
 export async function fetchFundamentalsSummary() {
@@ -102,6 +106,24 @@ export async function fetchSignals() {
   } catch {
     return { buys: [], sells: [] };
   }
+}
+
+type IndexKey = 'composite' | 'brvm30' | 'prestige' | 'croissance';
+const INDEX_CODES: Record<IndexKey, 'composite' | 'brvm_30' | 'prestige' | 'croissance'> = {
+  composite: 'composite',
+  brvm30: 'brvm_30',
+  prestige: 'prestige',
+  croissance: 'croissance',
+};
+
+export async function getIndexSeries20d(key: IndexKey) {
+  const rows = await fetchIndexLast20d(INDEX_CODES[key]);
+  return rows.map((r) => ({ d: r.date, v: Number(r.value) }));
+}
+
+export async function getIndexSeries10m(key: IndexKey) {
+  const rows = await fetchIndexMonthlyAvg10m(INDEX_CODES[key]);
+  return rows.map((r) => ({ mois: r.month, moyenne: Number(r.avg_value) }));
 }
 
 export { BASE as API_BASE_URL };
