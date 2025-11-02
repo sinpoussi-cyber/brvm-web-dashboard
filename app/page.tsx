@@ -1,162 +1,247 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { fetchOverview, fetchTopGainers, fetchTopLosers } from '@/lib/api';
-import { supabase } from '@/lib/supabase';
+import {
+  fetchIndicesOverview,
+  fetchMarketStats,
+  fetchTopGainers,
+  fetchTopLosers,
+  fetchFundamentalGlobalSummary,
+  fetchTechnicalGlobalSummary,
+} from '@/lib/api';
 import Card from '@/components/ui/Card';
-import Stat from '@/components/ui/Stat';
+import Link from 'next/link';
+import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
+// Types locaux
 type IndexData = {
   name: string;
   value: number;
   variation_daily: number;
   variation_ytd: number;
+  history?: { date: string; value: number }[];
 };
 
-type MarketMetrics = {
-  capitalisation_globale: number;
-  variation_journaliere_capitalisation_globale: number;
-  volume_moyen_annuel: number;
-  variation_journaliere_volume_moyen_annuel: number;
-  valeur_moyenne_annuelle: number;
-  variation_journaliere_valeur_moyenne_annuelle: number;
+type MarketStats = {
+  date: string;
   total_companies: number;
-  last_date: string;
-};
-
-type TopMove = {
-  symbol: string;
-  latest_price: number;
-  change_percent: number;
+  capitalisation_globale: number;
+  variation_j_cap: number;
+  volume_moyen_annuel: number;
+  variation_j_vol: number;
+  valeur_moyenne_annuelle: number;
+  variation_j_val: number;
 };
 
 export default function HomePage() {
   const [indices, setIndices] = useState<IndexData[]>([]);
-  const [metrics, setMetrics] = useState<MarketMetrics | null>(null);
-  const [gainers, setGainers] = useState<TopMove[]>([]);
-  const [losers, setLosers] = useState<TopMove[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [market, setMarket] = useState<MarketStats | null>(null);
+  const [gainers, setGainers] = useState<any[]>([]);
+  const [losers, setLosers] = useState<any[]>([]);
+  const [techSummary, setTechSummary] = useState('');
+  const [fundSummary, setFundSummary] = useState('');
 
+  // Récupérer données au chargement
   useEffect(() => {
-    async function loadData() {
+    (async () => {
       try {
-        // 1️⃣ Fetch indices (RPC)
-        const { data: ind } = await supabase
-          .from('new_market_indicators')
-          .select('*')
-          .order('extraction_date', { ascending: false })
-          .limit(1)
-          .single();
+        const i = await fetchIndicesOverview();
+        const m = await fetchMarketStats();
+        const g = await fetchTopGainers();
+        const l = await fetchTopLosers();
+        const t = await fetchTechnicalGlobalSummary();
+        const f = await fetchFundamentalGlobalSummary();
 
-        if (ind) {
-          setIndices([
-            { name: 'BRVM Composite', value: ind.brvm_composite, variation_daily: ind.variation_journaliere_brvm_composite, variation_ytd: ind.variation_ytd_brvm_composite },
-            { name: 'BRVM 30', value: ind.brvm_30, variation_daily: ind.variation_journaliere_brvm_30, variation_ytd: ind.variation_ytd_brvm_30 },
-            { name: 'BRVM Prestige', value: ind.brvm_prestige, variation_daily: ind.variation_journaliere_brvm_prestige, variation_ytd: ind.variation_ytd_brvm_prestige },
-            { name: 'BRVM Principal', value: ind.brvm_croissance, variation_daily: ind.variation_journaliere_brvm_croissance, variation_ytd: ind.variation_ytd_brvm_croissance },
-          ]);
-
-          setMetrics({
-            capitalisation_globale: ind.capitalisation_globale,
-            variation_journaliere_capitalisation_globale: ind.variation_journaliere_capitalisation_globale,
-            volume_moyen_annuel: ind.volume_moyen_annuel,
-            variation_journaliere_volume_moyen_annuel: ind.variation_journaliere_volume_moyen_annuel,
-            valeur_moyenne_annuelle: ind.valeur_moyenne_annuelle,
-            variation_journaliere_valeur_moyenne_annuelle: ind.variation_journaliere_valeur_moyenne_annuelle,
-            total_companies: 46, // Peut être dynamique
-            last_date: ind.extraction_date,
-          });
-        }
-
-        // 2️⃣ Fetch Top gainers / losers
-        const [g, l] = await Promise.all([
-          fetchTopGainers(5),
-          fetchTopLosers(5),
-        ]);
-
-        setGainers(g);
-        setLosers(l);
-      } catch (err) {
-        console.error('Erreur de chargement :', err);
-      } finally {
-        setLoading(false);
+        setIndices(i);
+        setMarket(m);
+        setGainers(g.slice(0, 5));
+        setLosers(l.slice(0, 5));
+        setTechSummary(t.summary);
+        setFundSummary(f.summary);
+      } catch (e) {
+        console.error('Erreur chargement Accueil :', e);
       }
-    }
-    loadData();
+    })();
   }, []);
 
-  if (loading) return <div className="text-center py-10">Chargement des données...</div>;
-
   return (
-    <div className="space-y-10 p-6">
-      {/* HEADER + Connexion */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">BRVM Analysis Suite</h1>
-        <div className="space-x-3">
-          <Link href="/auth/login" className="bg-gray-800 text-white px-4 py-2 rounded-xl">Se connecter</Link>
-          <Link href="/auth/register" className="bg-blue-600 text-white px-4 py-2 rounded-xl">Créer un compte</Link>
+    <div className="p-6 space-y-8">
+      {/* HEADER */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">📊 BRVM Dashboard</h1>
+        <div className="space-x-4">
+          <Link
+            href="/auth/register"
+            className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700"
+          >
+            Créer un compte
+          </Link>
+          <Link
+            href="/auth/login"
+            className="px-4 py-2 border border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50"
+          >
+            Se connecter
+          </Link>
         </div>
       </div>
 
-      {/* 1️⃣ Indices BRVM */}
-      <Card>
-        <div className="grid md:grid-cols-4 gap-4">
-          {indices.map((idx) => (
-            <div key={idx.name} className="border-r last:border-r-0 pr-4">
-              <div className="text-sm text-gray-500">{idx.name}</div>
-              <div className="text-2xl font-semibold">{idx.value.toFixed(2)}</div>
-              <div className={`text-sm ${idx.variation_daily >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {idx.variation_daily.toFixed(2)}% (Jour)
-              </div>
-              <div className={`text-xs ${idx.variation_ytd >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {idx.variation_ytd.toFixed(2)}% (YTD)
-              </div>
+      {/* INDICES PRINCIPAUX */}
+      <div className="grid md:grid-cols-4 gap-4">
+        {indices.map((i) => (
+          <Card key={i.name} className="p-4">
+            <div className="font-semibold text-lg">{i.name}</div>
+            <div className="text-2xl font-bold mt-1">{i.value.toFixed(2)}</div>
+            <div className="text-sm mt-1">
+              <span
+                className={
+                  i.variation_daily >= 0 ? 'text-green-600' : 'text-red-600'
+                }
+              >
+                {i.variation_daily >= 0 ? '+' : ''}
+                {i.variation_daily.toFixed(2)}% (Jour)
+              </span>
+              {' • '}
+              <span
+                className={
+                  i.variation_ytd >= 0 ? 'text-green-600' : 'text-red-600'
+                }
+              >
+                {i.variation_ytd >= 0 ? '+' : ''}
+                {i.variation_ytd.toFixed(2)}% (YTD)
+              </span>
             </div>
-          ))}
-        </div>
-      </Card>
+            {i.history && i.history.length > 0 && (
+              <div className="mt-3 h-28">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={i.history}>
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <XAxis dataKey="date" hide />
+                    <YAxis hide />
+                    <Tooltip />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
 
-      {/* 2️⃣ Marché Global */}
-      {metrics && (
+      {/* STATISTIQUES DE MARCHÉ */}
+      {market && (
         <Card>
-          <div className="grid md:grid-cols-4 gap-4">
-            <Stat label="Capitalisation Globale (Mds FCFA)" value={metrics.capitalisation_globale.toLocaleString()} sub={`${metrics.variation_journaliere_capitalisation_globale.toFixed(2)}%`} />
-            <Stat label="Volume Moyen Annuel" value={metrics.volume_moyen_annuel.toLocaleString()} sub={`${metrics.variation_journaliere_volume_moyen_annuel.toFixed(2)}%`} />
-            <Stat label="Valeur Moyenne Annuelle" value={metrics.valeur_moyenne_annuelle.toLocaleString()} sub={`${metrics.variation_journaliere_valeur_moyenne_annuelle.toFixed(2)}%`} />
-            <Stat label="Sociétés cotées" value={String(metrics.total_companies)} sub={`Dernière mise à jour : ${metrics.last_date}`} />
+          <h2 className="text-xl font-semibold mb-3">📈 Statistiques du marché</h2>
+          <div className="grid md:grid-cols-4 gap-4 text-center">
+            <div>
+              <p className="text-gray-500 text-sm">Date</p>
+              <p className="font-semibold">{market.date}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 text-sm">Sociétés cotées</p>
+              <p className="font-semibold">{market.total_companies}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 text-sm">Capitalisation Globale</p>
+              <p className="font-semibold text-blue-600">
+                {market.capitalisation_globale.toLocaleString()} FCFA
+              </p>
+              <p
+                className={
+                  market.variation_j_cap >= 0
+                    ? 'text-green-600 text-sm'
+                    : 'text-red-600 text-sm'
+                }
+              >
+                {market.variation_j_cap >= 0 ? '+' : ''}
+                {market.variation_j_cap.toFixed(2)}% (Jour)
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500 text-sm">Volume Moyen Annuel</p>
+              <p className="font-semibold text-blue-600">
+                {market.volume_moyen_annuel.toLocaleString()} titres
+              </p>
+              <p
+                className={
+                  market.variation_j_vol >= 0
+                    ? 'text-green-600 text-sm'
+                    : 'text-red-600 text-sm'
+                }
+              >
+                {market.variation_j_vol >= 0 ? '+' : ''}
+                {market.variation_j_vol.toFixed(2)}% (Jour)
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500 text-sm">Valeur Moyenne Annuelle</p>
+              <p className="font-semibold text-blue-600">
+                {market.valeur_moyenne_annuelle.toLocaleString()} FCFA
+              </p>
+              <p
+                className={
+                  market.variation_j_val >= 0
+                    ? 'text-green-600 text-sm'
+                    : 'text-red-600 text-sm'
+                }
+              >
+                {market.variation_j_val >= 0 ? '+' : ''}
+                {market.variation_j_val.toFixed(2)}% (Jour)
+              </p>
+            </div>
           </div>
         </Card>
       )}
 
-      {/* 3️⃣ Top Gagnants / Perdants */}
-      <div className="grid md:grid-cols-2 gap-4">
+      {/* TOP & FLOP 5 */}
+      <div className="grid md:grid-cols-2 gap-6">
         <Card>
-          <div className="font-semibold mb-3">Top 5 Gagnants</div>
-          <table className="w-full text-sm">
-            <thead><tr><th>Symbole</th><th>Dernier</th><th>%</th></tr></thead>
+          <h2 className="text-lg font-semibold mb-2 text-green-600">
+            🟢 Top 5 des Performances
+          </h2>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b bg-green-50">
+                <th className="text-left py-2 px-3">Symbole</th>
+                <th className="text-left py-2 px-3">Variation</th>
+              </tr>
+            </thead>
             <tbody>
-              {gainers.map(g => (
-                <tr key={g.symbol}>
-                  <td>{g.symbol}</td>
-                  <td>{g.latest_price.toFixed(2)}</td>
-                  <td className="text-green-600">{g.change_percent.toFixed(2)}%</td>
+              {gainers.map((g) => (
+                <tr key={g.symbol} className="border-b">
+                  <td className="py-2 px-3 font-semibold">{g.symbol}</td>
+                  <td className="py-2 px-3 text-green-600 font-semibold">
+                    +{g.change_percent.toFixed(2)}%
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </Card>
+
         <Card>
-          <div className="font-semibold mb-3">Flop 5</div>
-          <table className="w-full text-sm">
-            <thead><tr><th>Symbole</th><th>Dernier</th><th>%</th></tr></thead>
+          <h2 className="text-lg font-semibold mb-2 text-red-600">
+            🔴 Flop 5 des Performances
+          </h2>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b bg-red-50">
+                <th className="text-left py-2 px-3">Symbole</th>
+                <th className="text-left py-2 px-3">Variation</th>
+              </tr>
+            </thead>
             <tbody>
-              {losers.map(l => (
-                <tr key={l.symbol}>
-                  <td>{l.symbol}</td>
-                  <td>{l.latest_price.toFixed(2)}</td>
-                  <td className="text-red-600">{l.change_percent.toFixed(2)}%</td>
+              {losers.map((l) => (
+                <tr key={l.symbol} className="border-b">
+                  <td className="py-2 px-3 font-semibold">{l.symbol}</td>
+                  <td className="py-2 px-3 text-red-600 font-semibold">
+                    {l.change_percent.toFixed(2)}%
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -164,21 +249,16 @@ export default function HomePage() {
         </Card>
       </div>
 
-      {/* 4️⃣ Résumés Analyses */}
-      <div className="grid md:grid-cols-2 gap-4">
+      {/* RÉSUMÉS */}
+      <div className="grid md:grid-cols-2 gap-6">
         <Card>
-          <div className="text-lg font-semibold mb-2">Résumé Analyse Technique</div>
-          <p className="text-sm text-gray-600">
-            Synthèse des signaux de tendance, momentum et volatilité à partir des indicateurs MACD, RSI, Stochastique et Moyennes Mobiles.
-            <Link href="/technical" className="text-blue-600 ml-2">Voir plus</Link>
-          </p>
+          <h2 className="text-lg font-semibold mb-2">📘 Résumé Analyse Fondamentale</h2>
+          <p className="text-sm whitespace-pre-wrap">{fundSummary}</p>
         </Card>
+
         <Card>
-          <div className="text-lg font-semibold mb-2">Résumé Analyse Fondamentale</div>
-          <p className="text-sm text-gray-600">
-            Analyse IA des rapports financiers des sociétés cotées : croissance, rentabilité, et politique de dividendes.
-            <Link href="/fundamental" className="text-blue-600 ml-2">Voir plus</Link>
-          </p>
+          <h2 className="text-lg font-semibold mb-2">📗 Résumé Analyse Technique</h2>
+          <p className="text-sm whitespace-pre-wrap">{techSummary}</p>
         </Card>
       </div>
     </div>
