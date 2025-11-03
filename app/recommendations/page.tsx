@@ -1,54 +1,81 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Card from '@/components/ui/Card';
-import { supabase } from '@/lib/supabaseClient';
+import { getRecommendations } from '@/lib/api';
 
-interface Recommendation {
+type Recommendation = {
   symbol: string;
-  recommendation: string;
-  sector: string;
+  sector?: string;
+  recommendation?: string;
+  overall_signal?: string;
+};
+
+function isBuy(value?: string | null) {
+  return value ? /achat/i.test(value) || /buy/i.test(value) : false;
+}
+
+function isSell(value?: string | null) {
+  return value ? /vente/i.test(value) || /sell/i.test(value) : false;  
 }
 
 export default function RecommendationsPage() {
-  const [recs, setRecs] = useState<Recommendation[]>([]);
+  const [items, setItems] = useState<Recommendation[]>([]);
 
   useEffect(() => {
-    supabase
-      .from('technical_analysis')
-      .select('symbol, recommendation, sector')
-      .then(({ data }) => {
-        if (data) setRecs(data);
-      });
+    (async () => {
+      try {
+        const data = await getRecommendations();
+        setItems(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Erreur chargement recommandations', error);
+        setItems([]);
+      }
+    })();
   }, []);
 
-  const topBuy = recs.filter((r) => r.recommendation?.includes('Achat')).slice(0, 10);
-  const topSell = recs.filter((r) => r.recommendation?.includes('Vente')).slice(0, 10);
-
+  const { buy, sell } = useMemo(() => {
+    const buyList = items
+      .filter((item) => isBuy(item.recommendation) || isBuy(item.overall_signal))
+      .slice(0, 10);
+    const sellList = items
+      .filter((item) => isSell(item.recommendation) || isSell(item.overall_signal))
+      .slice(0, 10);
+    return { buy: buyList, sell: sellList };
+  }, [items]);
+  
   return (
     <div className="p-6 space-y-6">
       <Card>
         <h1 className="text-2xl font-semibold mb-4">Recommandations d’investissement</h1>
         <div className="grid md:grid-cols-2 gap-6">
           <div>
-            <h2 className="font-semibold text-green-600 mb-2">Top 10 - Actions à acheter</h2>
-            <ul className="list-disc ml-6">
-              {topBuy.map((r) => (
-                <li key={r.symbol}>
-                  {r.symbol} ({r.sector})
-                </li>
-              ))}
-            </ul>
+            <h2 className="font-semibold text-green-600 mb-2">Top 10 — Actions à acheter</h2>
+            {buy.length === 0 ? (
+              <p className="text-sm text-gray-500">Aucune recommandation d’achat disponible pour le moment.</p>
+            ) : (
+              <ul className="list-disc ml-6 text-sm space-y-1">
+                {buy.map((item) => (
+                  <li key={`buy-${item.symbol}`}>
+                    {item.symbol} {item.sector ? `(${item.sector})` : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <div>
-            <h2 className="font-semibold text-red-600 mb-2">Top 10 - Actions à vendre</h2>
-            <ul className="list-disc ml-6">
-              {topSell.map((r) => (
-                <li key={r.symbol}>
-                  {r.symbol} ({r.sector})
-                </li>
-              ))}
-            </ul>
+            <h2 className="font-semibold text-red-600 mb-2">Top 10 — Actions à vendre</h2>
+            {sell.length === 0 ? (
+              <p className="text-sm text-gray-500">Aucune recommandation de vente disponible pour le moment.</p>
+            ) : (
+              <ul className="list-disc ml-6 text-sm space-y-1">
+                {sell.map((item) => (
+                  <li key={`sell-${item.symbol}`}>
+                    {item.symbol} {item.sector ? `(${item.sector})` : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </Card>
@@ -64,23 +91,21 @@ export default function RecommendationsPage() {
             </tr>
           </thead>
           <tbody>
-            {recs.map((r) => (
-              <tr key={r.symbol} className="border-b">
-                <td className="p-2">{r.symbol}</td>
-                <td className="p-2">{r.sector}</td>
-                <td
-                  className={`p-2 ${
-                    r.recommendation?.includes('Achat')
-                      ? 'text-green-600'
-                      : r.recommendation?.includes('Vente')
-                      ? 'text-red-600'
-                      : 'text-gray-600'
-                  }`}
-                >
-                  {r.recommendation}
-                </td>
-              </tr>
-            ))}
+            {items.map((item) => {
+              const signal = item.recommendation ?? item.overall_signal ?? '—';
+              const colorClass = isBuy(signal)
+                ? 'text-green-600'
+                : isSell(signal)
+                ? 'text-red-600'
+                : 'text-gray-600';
+              return (
+                <tr key={`row-${item.symbol}`} className="border-b">
+                  <td className="p-2">{item.symbol}</td>
+                  <td className="p-2">{item.sector ?? '—'}</td>
+                  <td className={`p-2 font-medium ${colorClass}`}>{signal}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Card>
