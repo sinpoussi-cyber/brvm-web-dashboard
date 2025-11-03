@@ -1,6 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from 'recharts';
+import Card from '@/components/ui/Card';
 import {
   fetchIndicesOverview,
   fetchMarketStats,
@@ -8,127 +19,167 @@ import {
   fetchTopLosers,
   fetchFundamentalGlobalSummary,
   fetchTechnicalGlobalSummary,
+  type IndexOverview,
+  type MarketStats,
+  type TopMove,
 } from '@/lib/api';
-import Card from '@/components/ui/Card';
-import Link from 'next/link';
-import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
-// Types locaux
-type IndexData = {
-  name: string;
-  value: number;
-  variation_daily: number;
-  variation_ytd: number;
-  history?: { date: string; value: number }[];
+const numberFmt = new Intl.NumberFormat('fr-FR', {
+  maximumFractionDigits: 2,
+});
+
+const percentFmt = new Intl.NumberFormat('fr-FR', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+type MetricKey = 'capitalisation' | 'volume' | 'valeur';
+
+type ActiveMetric = {
+  key: MetricKey;
+  title: string;
 };
 
-type MarketStats = {
-  date: string;
-  total_companies: number;
-  capitalisation_globale: number;
-  variation_j_cap: number;
-  volume_moyen_annuel: number;
-  variation_j_vol: number;
-  valeur_moyenne_annuelle: number;
-  variation_j_val: number;
+type UserProfile = {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
 };
 
 export default function HomePage() {
-  const [indices, setIndices] = useState<IndexData[]>([]);
+  const [indices, setIndices] = useState<IndexOverview[]>([]);
   const [market, setMarket] = useState<MarketStats | null>(null);
-  const [gainers, setGainers] = useState<any[]>([]);
-  const [losers, setLosers] = useState<any[]>([]);
+  const [gainers, setGainers] = useState<TopMove[]>([]);
+  const [losers, setLosers] = useState<TopMove[]>([]);
   const [techSummary, setTechSummary] = useState('');
   const [fundSummary, setFundSummary] = useState('');
+  const [activeIndex, setActiveIndex] = useState<IndexOverview | null>(null);
+  const [activeMetric, setActiveMetric] = useState<ActiveMetric | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
 
-  // Récupérer données au chargement
   useEffect(() => {
+     const stored = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setUser(parsed);
+      } catch (error) {
+        console.warn('Impossible de lire le profil utilisateur', error);
+      }
+    }
+  }, []);
+  
+useEffect(() => {
     (async () => {
       try {
-        const i = await fetchIndicesOverview();
-        const m = await fetchMarketStats();
-        const g = await fetchTopGainers();
-        const l = await fetchTopLosers();
-        const t = await fetchTechnicalGlobalSummary();
-        const f = await fetchFundamentalGlobalSummary();
-
-        setIndices(i);
-        setMarket(m);
-        setGainers(g.slice(0, 5));
-        setLosers(l.slice(0, 5));
-        setTechSummary(t.summary);
-        setFundSummary(f.summary);
-      } catch (e) {
-        console.error('Erreur chargement Accueil :', e);
+        const [idx, mk, tg, tl, tech, fund] = await Promise.all([
+          fetchIndicesOverview(),
+          fetchMarketStats(),
+          fetchTopGainers(5),
+          fetchTopLosers(5),
+          fetchTechnicalGlobalSummary(),
+          fetchFundamentalGlobalSummary(),
+        ]);
+        setIndices(idx);
+        if (mk) setMarket(mk);
+        setGainers(tg);
+        setLosers(tl);
+        setTechSummary(tech.summary);
+        setFundSummary(fund.summary);
+      } catch (error) {
+        console.error('Erreur chargement Accueil :', error);
       }
     })();
   }, []);
 
+  const metricHistory = useMemo(() => {
+    const history = market?.history ?? [];
+    const parse = (key: MetricKey) =>
+      history
+        .map((row) => {
+          const base: Record<MetricKey, number | undefined> = {
+            capitalisation: row.capitalisation_globale,
+            volume: row.volume_moyen_annuel,
+            valeur: row.valeur_moyenne_annuelle,
+          };
+          return base[key] !== undefined
+            ? {
+                date: row.date,
+                value: Number(base[key]),
+              }
+            : null;
+        })
+        .filter((row): row is { date: string; value: number } => Boolean(row?.date));
+    return {
+      capitalisation: parse('capitalisation'),
+      volume: parse('volume'),
+      valeur: parse('valeur'),
+    };
+  }, [market?.history]);
+
+  const userDisplayName = user?.first_name
+    ? `${user.first_name}${user.last_name ? ` ${user.last_name}` : ''}`
+    : null;
+
   return (
     <div className="p-6 space-y-8">
       {/* HEADER */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">📊 BRVM Dashboard</h1>
-        <div className="space-x-4">
-          <Link
-            href="/auth/register"
-            className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700"
-          >
-            Créer un compte
-          </Link>
+       <div className="flex flex-wrap gap-4 justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">📊 BRVM Dashboard</h1>
+          {userDisplayName && (
+            <p className="text-sm text-gray-600 mt-1">
+              Bienvenue {userDisplayName}, retrouvez vos analyses personnalisées.
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {userDisplayName && (
+            <>
+              <span className="text-sm text-gray-600">{userDisplayName}</span>
+              <Link
+                href="/payment"
+                className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700"
+              >
+                Payer mon abonnement
+              </Link>
+            </>
+          )}
           <Link
             href="/auth/login"
             className="px-4 py-2 border border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50"
           >
             Se connecter
           </Link>
+          <Link
+            href="/auth/register"
+            className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700"
+          >
+            Créer un compte
+          </Link>
         </div>
       </div>
 
       {/* INDICES PRINCIPAUX */}
       <div className="grid md:grid-cols-4 gap-4">
-        {indices.map((i) => (
-          <Card key={i.name} className="p-4">
-            <div className="font-semibold text-lg">{i.name}</div>
-            <div className="text-2xl font-bold mt-1">{i.value.toFixed(2)}</div>
-            <div className="text-sm mt-1">
-              <span
-                className={
-                  i.variation_daily >= 0 ? 'text-green-600' : 'text-red-600'
-                }
-              >
-                {i.variation_daily >= 0 ? '+' : ''}
-                {i.variation_daily.toFixed(2)}% (Jour)
+        {indices.map((indice) => (
+          <Card
+            key={indice.code}
+            className="p-4 cursor-pointer transition hover:shadow-md"
+            onClick={() => setActiveIndex(indice)}
+          >
+            <div className="font-semibold text-lg">{indice.name}</div>
+            <div className="text-2xl font-bold mt-1">{numberFmt.format(indice.value)}</div>
+            <div className="text-sm mt-1 space-x-2">
+              <span className={indice.variation_daily >= 0 ? 'text-green-600' : 'text-red-600'}>
+                {indice.variation_daily >= 0 ? '+' : ''}
+                {percentFmt.format(indice.variation_daily)}% (Jour)
               </span>
-              {' • '}
-              <span
-                className={
-                  i.variation_ytd >= 0 ? 'text-green-600' : 'text-red-600'
-                }
-              >
-                {i.variation_ytd >= 0 ? '+' : ''}
-                {i.variation_ytd.toFixed(2)}% (YTD)
+              <span className={indice.variation_ytd >= 0 ? 'text-green-600' : 'text-red-600'}>
+                {indice.variation_ytd >= 0 ? '+' : ''}
+                {percentFmt.format(indice.variation_ytd)}% (YTD)
               </span>
             </div>
-            {i.history && i.history.length > 0 && (
-              <div className="mt-3 h-28">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={i.history}>
-                    <Line
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#2563eb"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                    <XAxis dataKey="date" hide />
-                    <YAxis hide />
-                    <Tooltip />
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
           </Card>
         ))}
       </div>
@@ -146,54 +197,48 @@ export default function HomePage() {
               <p className="text-gray-500 text-sm">Sociétés cotées</p>
               <p className="font-semibold">{market.total_companies}</p>
             </div>
-            <div>
-              <p className="text-gray-500 text-sm">Capitalisation Globale</p>
-              <p className="font-semibold text-blue-600">
-                {market.capitalisation_globale.toLocaleString()} FCFA
+            <button
+              type="button"
+              onClick={() => setActiveMetric({ key: 'capitalisation', title: 'Capitalisation Globale' })}
+              className="rounded-2xl border p-3 bg-blue-50 hover:bg-blue-100 transition"
+            >
+              <p className="text-gray-500 text-xs">Capitalisation Globale</p>
+              <p className="font-semibold text-blue-700">
+                {numberFmt.format(market.capitalisation_globale)} FCFA
               </p>
-              <p
-                className={
-                  market.variation_j_cap >= 0
-                    ? 'text-green-600 text-sm'
-                    : 'text-red-600 text-sm'
-                }
-              >
+              <p className={market.variation_j_cap >= 0 ? 'text-green-600 text-sm' : 'text-red-600 text-sm'}>
                 {market.variation_j_cap >= 0 ? '+' : ''}
-                {market.variation_j_cap.toFixed(2)}% (Jour)
+                {percentFmt.format(market.variation_j_cap)}% / jour
               </p>
-            </div>
-            <div>
-              <p className="text-gray-500 text-sm">Volume Moyen Annuel</p>
-              <p className="font-semibold text-blue-600">
-                {market.volume_moyen_annuel.toLocaleString()} titres
+              </button>
+            <button
+              type="button"
+              onClick={() => setActiveMetric({ key: 'volume', title: 'Volume moyen annuel' })}
+              className="rounded-2xl border p-3 bg-blue-50 hover:bg-blue-100 transition"
+            >
+              <p className="text-gray-500 text-xs">Volume moyen annuel</p>
+              <p className="font-semibold text-blue-700">
+                {numberFmt.format(market.volume_moyen_annuel)} titres
               </p>
-              <p
-                className={
-                  market.variation_j_vol >= 0
-                    ? 'text-green-600 text-sm'
-                    : 'text-red-600 text-sm'
-                }
-              >
+              <p className={market.variation_j_vol >= 0 ? 'text-green-600 text-sm' : 'text-red-600 text-sm'}>
                 {market.variation_j_vol >= 0 ? '+' : ''}
-                {market.variation_j_vol.toFixed(2)}% (Jour)
+                {percentFmt.format(market.variation_j_vol)}% / jour
               </p>
-            </div>
-            <div>
-              <p className="text-gray-500 text-sm">Valeur Moyenne Annuelle</p>
-              <p className="font-semibold text-blue-600">
-                {market.valeur_moyenne_annuelle.toLocaleString()} FCFA
+              </button>
+            <button
+              type="button"
+              onClick={() => setActiveMetric({ key: 'valeur', title: 'Valeur moyenne annuelle' })}
+              className="rounded-2xl border p-3 bg-blue-50 hover:bg-blue-100 transition"
+            >
+              <p className="text-gray-500 text-xs">Valeur moyenne annuelle</p>
+              <p className="font-semibold text-blue-700">
+                {numberFmt.format(market.valeur_moyenne_annuelle)} FCFA
               </p>
-              <p
-                className={
-                  market.variation_j_val >= 0
-                    ? 'text-green-600 text-sm'
-                    : 'text-red-600 text-sm'
-                }
-              >
+              <p className={market.variation_j_val >= 0 ? 'text-green-600 text-sm' : 'text-red-600 text-sm'}>
                 {market.variation_j_val >= 0 ? '+' : ''}
-                {market.variation_j_val.toFixed(2)}% (Jour)
+                {percentFmt.format(market.variation_j_val)}% / jour
               </p>
-            </div>
+            </button>
           </div>
         </Card>
       )}
@@ -201,22 +246,22 @@ export default function HomePage() {
       {/* TOP & FLOP 5 */}
       <div className="grid md:grid-cols-2 gap-6">
         <Card>
-          <h2 className="text-lg font-semibold mb-2 text-green-600">
-            🟢 Top 5 des Performances
-          </h2>
+           <h2 className="text-lg font-semibold mb-2 text-green-600">🟢 Top 5 des Performances</h2>
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b bg-green-50">
                 <th className="text-left py-2 px-3">Symbole</th>
+                <th className="text-left py-2 px-3">Cours</th>
                 <th className="text-left py-2 px-3">Variation</th>
               </tr>
             </thead>
             <tbody>
-              {gainers.map((g) => (
-                <tr key={g.symbol} className="border-b">
-                  <td className="py-2 px-3 font-semibold">{g.symbol}</td>
+              {gainers.map((item) => (
+                <tr key={item.symbol} className="border-b">
+                  <td className="py-2 px-3 font-semibold">{item.symbol}</td>
+                  <td className="py-2 px-3">{numberFmt.format(item.latest_price)}</td>
                   <td className="py-2 px-3 text-green-600 font-semibold">
-                    +{g.change_percent.toFixed(2)}%
+                    +{percentFmt.format(item.change_percent)}%
                   </td>
                 </tr>
               ))}
@@ -225,22 +270,22 @@ export default function HomePage() {
         </Card>
 
         <Card>
-          <h2 className="text-lg font-semibold mb-2 text-red-600">
-            🔴 Flop 5 des Performances
-          </h2>
+          <h2 className="text-lg font-semibold mb-2 text-red-600">🔴 Flop 5 des Performances</h2>
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b bg-red-50">
                 <th className="text-left py-2 px-3">Symbole</th>
+                <th className="text-left py-2 px-3">Cours</th>
                 <th className="text-left py-2 px-3">Variation</th>
               </tr>
             </thead>
             <tbody>
-              {losers.map((l) => (
-                <tr key={l.symbol} className="border-b">
-                  <td className="py-2 px-3 font-semibold">{l.symbol}</td>
+              {losers.map((item) => (
+                <tr key={item.symbol} className="border-b">
+                  <td className="py-2 px-3 font-semibold">{item.symbol}</td>
+                  <td className="py-2 px-3">{numberFmt.format(item.latest_price)}</td>
                   <td className="py-2 px-3 text-red-600 font-semibold">
-                    {l.change_percent.toFixed(2)}%
+                    {percentFmt.format(item.change_percent)}%
                   </td>
                 </tr>
               ))}
@@ -253,14 +298,128 @@ export default function HomePage() {
       <div className="grid md:grid-cols-2 gap-6">
         <Card>
           <h2 className="text-lg font-semibold mb-2">📘 Résumé Analyse Fondamentale</h2>
-          <p className="text-sm whitespace-pre-wrap">{fundSummary}</p>
+          <p className="text-sm whitespace-pre-wrap leading-relaxed">{fundSummary}</p>
         </Card>
 
         <Card>
           <h2 className="text-lg font-semibold mb-2">📗 Résumé Analyse Technique</h2>
-          <p className="text-sm whitespace-pre-wrap">{techSummary}</p>
+          <p className="text-sm whitespace-pre-wrap leading-relaxed">{techSummary}</p>
         </Card>
       </div>
+
+      {/* Modal Indice */}
+      {activeIndex && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-start gap-4">
+              <div>
+                <h3 className="text-xl font-semibold">{activeIndex.name}</h3>
+                <p className="text-sm text-gray-500">Historique des valeurs et variations</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveIndex(null)}
+                className="text-sm text-gray-500 hover:text-gray-800"
+              >
+                Fermer ✕
+              </button>
+            </div>
+            <div className="mt-4" style={{ height: 280 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={activeIndex.history}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" minTickGap={18} />
+                  <YAxis />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="value" stroke="#2563eb" dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <table className="w-full text-xs mt-4">
+              <thead>
+                <tr className="border-b">
+                  <th className="p-2 text-left">Date</th>
+                  <th className="p-2 text-right">Valeur</th>
+                  <th className="p-2 text-right">Var. Jour</th>
+                  <th className="p-2 text-right">Var. YTD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...activeIndex.history]
+                  .slice(-30)
+                  .reverse()
+                  .map((row) => (
+                    <tr key={`${activeIndex.code}-${row.date}`} className="border-b">
+                      <td className="p-2">{row.date}</td>
+                      <td className="p-2 text-right">{numberFmt.format(row.value)}</td>
+                      <td className="p-2 text-right">
+                        {row.variation_daily !== undefined
+                          ? `${percentFmt.format(row.variation_daily)}%`
+                          : '—'}
+                      </td>
+                      <td className="p-2 text-right">
+                        {row.variation_ytd !== undefined
+                          ? `${percentFmt.format(row.variation_ytd)}%`
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Statistique marché */}
+      {activeMetric && market && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-start gap-4">
+              <div>
+                <h3 className="text-xl font-semibold">{activeMetric.title}</h3>
+                <p className="text-sm text-gray-500">Historique sur un mois</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveMetric(null)}
+                className="text-sm text-gray-500 hover:text-gray-800"
+              >
+                Fermer ✕
+              </button>
+            </div>
+            <div className="mt-4" style={{ height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={metricHistory[activeMetric.key]}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" minTickGap={18} />
+                  <YAxis />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="value" stroke="#f97316" dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <table className="w-full text-xs mt-4">
+              <thead>
+                <tr className="border-b">
+                  <th className="p-2 text-left">Date</th>
+                  <th className="p-2 text-right">Valeur</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...metricHistory[activeMetric.key]]
+                  .slice(-30)
+                  .reverse()
+                  .map((row) => (
+                    <tr key={`${activeMetric.key}-${row.date}`} className="border-b">
+                      <td className="p-2">{row.date}</td>
+                      <td className="p-2 text-right">{numberFmt.format(row.value)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
