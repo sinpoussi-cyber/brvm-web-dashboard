@@ -24,6 +24,7 @@ export default function TrainingPage() {
   const [symbol, setSymbol] = useState('');
   const [quantity, setQuantity] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   // Charger sociétés au démarrage
   useEffect(() => {
@@ -38,13 +39,22 @@ export default function TrainingPage() {
   useEffect(() => {
     localStorage.setItem('virtual_holdings', JSON.stringify(holdings));
     localStorage.setItem('virtual_cash', String(cash));
-  }, [holdings, cash]);
+    localStorage.setItem('virtual_budget', String(budget));
+  }, [holdings, cash, budget]);
 
   useEffect(() => {
     const h = localStorage.getItem('virtual_holdings');
     const c = localStorage.getItem('virtual_cash');
-    if (h) setHoldings(JSON.parse(h));
+    const b = localStorage.getItem('virtual_budget');
+    if (h) {
+      const parsed: Holding[] = JSON.parse(h);
+      setHoldings(parsed);
+      if (parsed.length) {
+        refreshHoldings(parsed);
+      }
+    }
     if (c) setCash(Number(c));
+    if (b) setBudget(Number(b));
   }, []);
 
   async function handleBuy() {
@@ -99,6 +109,27 @@ export default function TrainingPage() {
     setHoldings((prev) => prev.filter((x) => x.symbol !== sym));
   }
 
+  async function refreshHoldings(list: Holding[] = holdings) {
+    if (!list.length) return;
+    setUpdating(true);
+    try {
+      const updated = await Promise.all(
+        list.map(async (h) => {
+          const quote = await fetchCompanyQuote(h.symbol);
+          return {
+            ...h,
+            currentPrice: quote?.latest_price ?? h.currentPrice ?? h.buyPrice,
+          };
+        })
+      );
+      setHoldings(updated);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   const totalInvested = holdings.reduce(
     (sum, h) => sum + h.buyPrice * h.quantity,
     0
@@ -139,6 +170,43 @@ export default function TrainingPage() {
               {pnl.toLocaleString()} FCFA
             </p>
           </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <label htmlFor="budget-input" className="font-medium">
+              Ajuster le budget :
+            </label>
+            <input
+              id="budget-input"
+              type="number"
+              className="border rounded-lg px-3 py-1 w-32"
+              value={budget}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                if (!Number.isNaN(next)) {
+                  setBudget(next);
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="px-3 py-1 rounded-lg border"
+              onClick={() => {
+                setCash(budget);
+                setHoldings([]);
+              }}
+            >
+              Réinitialiser le portefeuille
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => refreshHoldings()}
+            className="px-4 py-2 rounded-lg bg-emerald-600 text-white"
+            disabled={updating || holdings.length === 0}
+          >
+            {updating ? 'Actualisation…' : 'Actualiser les cours'}
+          </button>
         </div>
       </Card>
 
