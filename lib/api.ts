@@ -1,6 +1,5 @@
-'use server';
-
 import { supabase } from '@/lib/supabaseClient';
+import type { RecommendationPayload } from '@/types/recommendations';
 
 type Json = any;
 
@@ -36,6 +35,86 @@ function pickDate(row: Record<string, any>, keys: readonly string[]): string | u
     if (value) return String(value);
   }
   return undefined;
+}
+
+type CompanyRecord = {
+  id: number;
+  symbol: string;
+  name?: string;
+  sector?: string;
+};
+
+const companyCache = new Map<string, CompanyRecord>();
+const companyIdCache = new Map<number, CompanyRecord>();
+
+function normalizeSymbol(symbol: string) {
+  return symbol.trim().toUpperCase();
+}
+
+async function getCompanyRecord(symbol: string): Promise<CompanyRecord | null> {
+  if (!symbol) return null;
+  const normalized = normalizeSymbol(symbol);
+  const cached = companyCache.get(normalized);
+  if (cached) return cached;
+
+  const { data: directMatch } = await supabase
+    .from('companies')
+    .select('id, symbol, name, sector')
+    .eq('symbol', normalized)
+    .limit(1);
+
+  let row = directMatch?.[0];
+
+  if (!row) {
+    const { data: fallback } = await supabase
+      .from('companies')
+      .select('id, symbol, name, sector')
+      .ilike('symbol', normalized)
+      .limit(1);
+    row = fallback?.[0];
+  }
+
+  if (!row) return null;
+
+  const record: CompanyRecord = {
+    id: Number(row.id),
+    symbol: normalizeSymbol(row.symbol ?? normalized),
+    name: row.name ?? undefined,
+    sector: row.sector ?? undefined,
+  };
+
+  companyCache.set(record.symbol, record);
+  companyCache.set(normalized, record);
+  companyIdCache.set(record.id, record);
+  return record;
+}
+
+async function getCompanyById(id: number): Promise<CompanyRecord | null> {
+  if (!Number.isFinite(id)) return null;
+  const cached = companyIdCache.get(id);
+  if (cached) return cached;
+
+  const { data } = await supabase
+    .from('companies')
+    .select('id, symbol, name, sector')
+    .eq('id', id)
+    .limit(1);
+
+  const row = data?.[0];
+  if (!row) return null;
+
+  const record: CompanyRecord = {
+    id: Number(row.id),
+    symbol: normalizeSymbol(row.symbol ?? ''),
+    name: row.name ?? undefined,
+    sector: row.sector ?? undefined,
+  };
+
+  if (record.symbol) {
+    companyCache.set(record.symbol, record);
+  }
+  companyIdCache.set(record.id, record);
+  return record;
 }
 
 const INDEX_CONFIGS = [
@@ -123,6 +202,62 @@ export type IndexOverview = {
   history: IndexHistoryPoint[];
 };
 
+function toDate(value?: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function computeIndexHistory(history: IndexHistoryPoint[]): IndexHistoryPoint[] {
+  if (!history?.length) return [];
+  const ordered = [...history].map((point) => ({ ...point }));
+  ordered.sort((a, b) => {
+    const da = Date.parse(a.date ?? '');
+    const db = Date.parse(b.date ?? '');
+    if (Number.isNaN(da) || Number.isNaN(db)) return 0;
+    return da - db;
+  });
+
+  const yearBaselines = new Map<number, number>();
+
+  for (let idx = 0; idx < ordered.length; idx += 1) {
+    const point = ordered[idx];
+    const value = Number(point.value);
+    if (!Number.isFinite(value) || value === 0) continue;
+    const dateObj = toDate(point.date);
+    if (!dateObj) continue;
+
+    if (!yearBaselines.has(dateObj.getFullYear())) {
+      yearBaselines.set(dateObj.getFullYear(), value);
+    }
+
+    if ((point.variation_daily === undefined || point.variation_daily === null) && idx > 0) {
+      const prev = ordered[idx - 1];
+      const prevValue = Number(prev.value);
+      if (Number.isFinite(prevValue) && prevValue !== 0) {
+        point.variation_daily = ((value - prevValue) / prevValue) * 100;
+      }
+    } else if (point.variation_daily === undefined || point.variation_daily === null) {
+      point.variation_daily = 0;
+    }
+
+    const baseline = yearBaselines.get(dateObj.getFullYear());
+    if ((point.variation_ytd === undefined || point.variation_ytd === null) && baseline && baseline !== 0) {
+      point.variation_ytd = ((value - baseline) / baseline) * 100;
+    }
+
+    if (point.variation_daily !== undefined && point.variation_daily !== null) {
+      point.variation_daily = Number(point.variation_daily);
+    }
+    if (point.variation_ytd !== undefined && point.variation_ytd !== null) {
+      point.variation_ytd = Number(point.variation_ytd);
+    }
+  }
+
+  return ordered;
+}
+
 function parseApiIndices(payload: any): Partial<IndexOverview>[] | null {
   if (!payload) return null;
   const arr = Array.isArray(payload)
@@ -170,19 +305,24 @@ function mergeIndexData(
     if (!update?.code) continue;
     const existing = map.get(update.code);
     if (existing) {
+      const mergedHistory =
+        update.history && update.history.length
+          ? computeIndexHistory(update.history)
+          : existing.history ?? [];
       map.set(update.code, {
         ...existing,
         ...update,
-        history: update.history && update.history.length ? update.history : existing.history,
+        history: mergedHistory,
       });
     } else {
+      const history = computeIndexHistory(update.history ?? []);
       map.set(update.code, {
         code: update.code,
         name: update.name ?? update.code,
         value: update.value ?? 0,
         variation_daily: update.variation_daily ?? 0,
         variation_ytd: update.variation_ytd ?? 0,
-        history: update.history ?? [],
+        history,
       });
     }
   }
@@ -243,15 +383,22 @@ export async function fetchIndicesOverview(): Promise<IndexOverview[]> {
   }
 
   const latest = supaData[0];
-  const base = INDEX_CONFIGS.map((cfg) => ({
-    code: cfg.code,
-    name: cfg.name,
-    value: pickNumber(latest, cfg.valueKeys) ?? 0,
-    variation_daily: pickNumber(latest, cfg.dailyKeys) ?? 0,
-    variation_ytd: pickNumber(latest, cfg.ytdKeys) ?? 0,
-    history: historyMap.get(cfg.code) ?? [],
-  }));
-
+  const base = INDEX_CONFIGS.map((cfg) => {
+    const history = computeIndexHistory(historyMap.get(cfg.code) ?? []).slice(-90);
+    const lastPoint = history.length ? history[history.length - 1] : null;
+    const fallbackValue = pickNumber(latest, cfg.valueKeys);
+    const fallbackDaily = pickNumber(latest, cfg.dailyKeys);
+    const fallbackYtd = pickNumber(latest, cfg.ytdKeys);
+    return {
+      code: cfg.code,
+      name: cfg.name,
+      history,
+      value: lastPoint?.value ?? (fallbackValue ?? 0),
+      variation_daily: lastPoint?.variation_daily ?? (fallbackDaily ?? 0),
+      variation_ytd: lastPoint?.variation_ytd ?? (fallbackYtd ?? 0),
+    };
+  });
+  
   return mergeIndexData(base, apiIndices);
 }
 
@@ -259,10 +406,13 @@ export type MarketHistoryPoint = {
   date: string;
   capitalisation_globale?: number;
   variation_j_cap?: number;
+  variation_ytd_cap?: number;
   volume_moyen_annuel?: number;
   variation_j_vol?: number;
+  variation_ytd_vol?: number;
   valeur_moyenne_annuelle?: number;
   variation_j_val?: number;
+  variation_ytd_val?: number;
 };
 
 export type MarketStats = {
@@ -270,22 +420,135 @@ export type MarketStats = {
   total_companies: number;
   capitalisation_globale: number;
   variation_j_cap: number;
+  variation_ytd_cap: number;
   volume_moyen_annuel: number;
   variation_j_vol: number;
+  variation_ytd_vol: number;
   valeur_moyenne_annuelle: number;
   variation_j_val: number;
+  variation_ytd_val: number;
   history: MarketHistoryPoint[];
 };
 
+const MARKET_VARIATION_CONFIG = [
+  {
+    valueKey: 'capitalisation_globale' as const,
+    dailyKey: 'variation_j_cap' as const,
+    ytdKey: 'variation_ytd_cap' as const,
+  },
+  {
+    valueKey: 'volume_moyen_annuel' as const,
+    dailyKey: 'variation_j_vol' as const,
+    ytdKey: 'variation_ytd_vol' as const,
+  },
+  {
+    valueKey: 'valeur_moyenne_annuelle' as const,
+    dailyKey: 'variation_j_val' as const,
+    ytdKey: 'variation_ytd_val' as const,
+  },
+] as const;
+
+function computeMarketHistory(history: MarketHistoryPoint[]): MarketHistoryPoint[] {
+  if (!history?.length) return [];
+  const ordered = [...history].map((row) => ({ ...row }));
+  ordered.sort((a, b) => {
+    const da = Date.parse(a.date ?? '');
+    const db = Date.parse(b.date ?? '');
+    if (Number.isNaN(da) || Number.isNaN(db)) return 0;
+    return da - db;
+  });
+
+  const baselines = new Map<string, number>();
+
+  for (let idx = 0; idx < ordered.length; idx += 1) {
+    const row = ordered[idx];
+    const dateObj = toDate(row.date);
+    if (!dateObj) continue;
+    const year = dateObj.getFullYear();
+
+    for (const cfg of MARKET_VARIATION_CONFIG) {
+      const rawValue = (row as any)[cfg.valueKey];
+      if (rawValue === undefined || rawValue === null) continue;
+      const value = Number(rawValue);
+      if (!Number.isFinite(value) || value === 0) continue;
+
+      const baseKey = `${cfg.valueKey}-${year}`;
+      if (!baselines.has(baseKey)) {
+        baselines.set(baseKey, value);
+      }
+
+      if (((row as any)[cfg.dailyKey] === undefined || (row as any)[cfg.dailyKey] === null) && idx > 0) {
+        const prevRaw = (ordered[idx - 1] as any)[cfg.valueKey];
+        if (prevRaw !== undefined && prevRaw !== null) {
+          const prevValue = Number(prevRaw);
+          if (Number.isFinite(prevValue) && prevValue !== 0) {
+            (row as any)[cfg.dailyKey] = ((value - prevValue) / prevValue) * 100;
+          }
+        }
+      } else if ((row as any)[cfg.dailyKey] === undefined || (row as any)[cfg.dailyKey] === null) {
+        (row as any)[cfg.dailyKey] = 0;
+      }
+
+      const baseline = baselines.get(baseKey);
+      if (((row as any)[cfg.ytdKey] === undefined || (row as any)[cfg.ytdKey] === null) && baseline && baseline !== 0) {
+        (row as any)[cfg.ytdKey] = ((value - baseline) / baseline) * 100;
+      }
+
+      if ((row as any)[cfg.dailyKey] !== undefined && (row as any)[cfg.dailyKey] !== null) {
+        (row as any)[cfg.dailyKey] = Number((row as any)[cfg.dailyKey]);
+      }
+      if ((row as any)[cfg.ytdKey] !== undefined && (row as any)[cfg.ytdKey] !== null) {
+        (row as any)[cfg.ytdKey] = Number((row as any)[cfg.ytdKey]);
+      }
+    }
+  }
+
+  return ordered;
+}
+
 const MARKET_KEYS = {
   capitalisation: ['market_cap', 'market_capitalization', 'capitalisation', 'capitalisation_globale'],
-  capitalisationVar: ['market_cap_change_percent', 'capitalisation_variation', 'variation_capitalisation', 'variation_j_cap'],
+  capitalisationVar: [
+    'market_cap_change_percent',
+    'capitalisation_variation',
+    'variation_capitalisation',
+    'variation_j_cap',
+    'variation_journaliere_capitalisation_globale',
+  ],
+  capitalisationYtd: [
+    'market_cap_ytd',
+    'variation_ytd_capitalisation',
+    'variation_ytd_cap',
+    'variation_ytd_capitalisation_globale',
+  ],
   volume: ['total_volume', 'volume_moyen_annuel', 'average_volume', 'volume'],
-  volumeVar: ['volume_change_percent', 'variation_volume', 'variation_j_vol'],
+  volumeVar: [
+    'volume_change_percent',
+    'variation_volume',
+    'variation_j_vol',
+    'variation_journaliere_volume_moyen_annuel',
+  ],
+  volumeYtd: [
+    'volume_ytd',
+    'variation_ytd_volume',
+    'variation_ytd_vol',
+    'variation_ytd_volume_moyen_annuel',
+  ],
   value: ['total_value', 'valeur_moyenne_annuelle', 'average_value', 'market_value'],
-  valueVar: ['value_change_percent', 'variation_valeur', 'variation_j_val'],
+  valueVar: [
+    'value_change_percent',
+    'variation_valeur',
+    'variation_j_val',
+    'variation_journaliere_valeur_moyenne_annuelle',
+  ],
+  valueYtd: [
+    'value_ytd',
+    'variation_ytd_valeur',
+    'variation_ytd_val',
+    'variation_ytd_valeur_moyenne_annuelle',
+  ],
   companies: ['total_companies', 'companies', 'nombre_societes'],
-};
+  } as const;
 
 export async function fetchMarketStats(): Promise<MarketStats | null> {
   const api = await getJson<any>('/api/v1/market/overview');
@@ -296,20 +559,32 @@ export async function fetchMarketStats(): Promise<MarketStats | null> {
       date: String(o.date ?? o.trade_date ?? ''),
       total_companies: Number(o.total_companies ?? 0),
       capitalisation_globale: Number(o.market_capitalization ?? o.capitalisation_globale ?? 0),
+      variation_ytd_cap: Number(o.market_cap_ytd ?? o.variation_ytd_cap ?? o.variation_ytd ?? 0),
       variation_j_cap: Number(o.market_cap_change_percent ?? o.variation_j_cap ?? 0),
       volume_moyen_annuel: Number(o.average_volume ?? o.volume_moyen_annuel ?? 0),
       variation_j_vol: Number(o.volume_change_percent ?? o.variation_j_vol ?? 0),
+      variation_ytd_vol: Number(o.volume_ytd ?? o.variation_ytd_vol ?? o.variation_ytd_volume ?? 0),
       valeur_moyenne_annuelle: Number(o.average_value ?? o.valeur_moyenne_annuelle ?? 0),
       variation_j_val: Number(o.value_change_percent ?? o.variation_j_val ?? 0),
+      variation_ytd_val: Number(o.value_ytd ?? o.variation_ytd_val ?? o.variation_ytd_valeur ?? 0),
       history: Array.isArray(api.history)
         ? api.history.map((row: any) => ({
             date: String(row.date ?? row.trade_date ?? ''),
             capitalisation_globale: Number(row.market_capitalization ?? row.capitalisation_globale ?? 0),
             variation_j_cap: Number(row.market_cap_change_percent ?? row.variation_j_cap ?? 0),
+            variation_ytd_cap: Number(
+              row.market_cap_ytd ?? row.variation_ytd_cap ?? row.variation_ytd_capitalisation ?? 0
+            ),
             volume_moyen_annuel: Number(row.average_volume ?? row.volume_moyen_annuel ?? 0),
             variation_j_vol: Number(row.volume_change_percent ?? row.variation_j_vol ?? 0),
+            variation_ytd_vol: Number(
+              row.volume_ytd ?? row.variation_ytd_vol ?? row.variation_ytd_volume ?? 0
+            ),
             valeur_moyenne_annuelle: Number(row.average_value ?? row.valeur_moyenne_annuelle ?? 0),
             variation_j_val: Number(row.value_change_percent ?? row.variation_j_val ?? 0),
+            variation_ytd_val: Number(
+              row.value_ytd ?? row.variation_ytd_val ?? row.variation_ytd_valeur ?? 0
+            ),
           }))
         : [],
     };
@@ -327,34 +602,74 @@ export async function fetchMarketStats(): Promise<MarketStats | null> {
 
   const latest = data[0];
   const date = pickDate(latest, DATE_KEYS) ?? apiStats?.date ?? '';
-  const history: MarketHistoryPoint[] = data
+  const historyRaw: MarketHistoryPoint[] = data
     .map((row) => ({
       date: pickDate(row, DATE_KEYS) ?? '',
       capitalisation_globale: pickNumber(row, MARKET_KEYS.capitalisation),
       variation_j_cap: pickNumber(row, MARKET_KEYS.capitalisationVar),
+      variation_ytd_cap: pickNumber(row, MARKET_KEYS.capitalisationYtd),
       volume_moyen_annuel: pickNumber(row, MARKET_KEYS.volume),
       variation_j_vol: pickNumber(row, MARKET_KEYS.volumeVar),
+      variation_ytd_vol: pickNumber(row, MARKET_KEYS.volumeYtd),
       valeur_moyenne_annuelle: pickNumber(row, MARKET_KEYS.value),
       variation_j_val: pickNumber(row, MARKET_KEYS.valueVar),
+      variation_ytd_val: pickNumber(row, MARKET_KEYS.valueYtd),
     }))
     .filter((row) => row.date);
+
+  const computedHistory = computeMarketHistory(historyRaw);
+  const lastPoint = computedHistory.length ? computedHistory[computedHistory.length - 1] : null;
+  const limitedHistory = computedHistory.slice(-90);
 
   return {
     date,
     total_companies: pickNumber(latest, MARKET_KEYS.companies) ?? apiStats?.total_companies ?? 0,
     capitalisation_globale:
-      pickNumber(latest, MARKET_KEYS.capitalisation) ?? apiStats?.capitalisation_globale ?? 0,
+      lastPoint?.capitalisation_globale ??
+      pickNumber(latest, MARKET_KEYS.capitalisation) ??
+      apiStats?.capitalisation_globale ??
+      0,
     variation_j_cap:
-      pickNumber(latest, MARKET_KEYS.capitalisationVar) ?? apiStats?.variation_j_cap ?? 0,
+      lastPoint?.variation_j_cap ??
+      pickNumber(latest, MARKET_KEYS.capitalisationVar) ??
+      apiStats?.variation_j_cap ??
+      0,
+    variation_ytd_cap:
+      lastPoint?.variation_ytd_cap ??
+      pickNumber(latest, MARKET_KEYS.capitalisationYtd) ??
+      apiStats?.variation_ytd_cap ??
+      0,
     volume_moyen_annuel:
-      pickNumber(latest, MARKET_KEYS.volume) ?? apiStats?.volume_moyen_annuel ?? 0,
+      lastPoint?.volume_moyen_annuel ??
+      pickNumber(latest, MARKET_KEYS.volume) ??
+      apiStats?.volume_moyen_annuel ??
+      0,
     variation_j_vol:
-      pickNumber(latest, MARKET_KEYS.volumeVar) ?? apiStats?.variation_j_vol ?? 0,
+      lastPoint?.variation_j_vol ??
+      pickNumber(latest, MARKET_KEYS.volumeVar) ??
+      apiStats?.variation_j_vol ??
+      0,
+    variation_ytd_vol:
+      lastPoint?.variation_ytd_vol ??
+      pickNumber(latest, MARKET_KEYS.volumeYtd) ??
+      apiStats?.variation_ytd_vol ??
+      0,
     valeur_moyenne_annuelle:
-      pickNumber(latest, MARKET_KEYS.value) ?? apiStats?.valeur_moyenne_annuelle ?? 0,
+      lastPoint?.valeur_moyenne_annuelle ??
+      pickNumber(latest, MARKET_KEYS.value) ??
+      apiStats?.valeur_moyenne_annuelle ??
+      0,
     variation_j_val:
-      pickNumber(latest, MARKET_KEYS.valueVar) ?? apiStats?.variation_j_val ?? 0,
-    history,
+      lastPoint?.variation_j_val ??
+      pickNumber(latest, MARKET_KEYS.valueVar) ??
+      apiStats?.variation_j_val ??
+      0,
+    variation_ytd_val:
+      lastPoint?.variation_ytd_val ??
+      pickNumber(latest, MARKET_KEYS.valueYtd) ??
+      apiStats?.variation_ytd_val ??
+      0,
+    history: limitedHistory,
   };
 }
 
@@ -394,64 +709,91 @@ async function fetchTopMoves(path: string, limit: number): Promise<TopMove[] | n
   return null;
 }
 
+async function loadTopMovesFromSupabase(limit: number, order: 'asc' | 'desc'): Promise<TopMove[]> {
+  const { data } = await supabase
+    .from('historical_data')
+    .select('company_id, symbol, price, close, latest_price, change_percent, variation_percent, daily_change_percent')
+    .order('trade_date', { ascending: false })
+    .limit(limit * 40);
+
+  if (!data?.length) return [];
+  type Prepared = {
+    companyId: number | null;
+    symbol: string;
+    price: number;
+    change: number | null;
+  };
+
+  const prepared: Prepared[] = data.map((row: any) => ({
+    companyId: typeof row.company_id === 'number' ? row.company_id : null,
+    symbol: row.symbol ? normalizeSymbol(String(row.symbol)) : '',
+    price: Number(row.price ?? row.close ?? row.latest_price ?? 0),
+    change: pickNumber(row, ['change_percent', 'variation_percent', 'daily_change_percent']) ?? null,
+  }));
+
+  const missingIds = Array.from(
+    new Set(prepared.filter((item) => !item.symbol && item.companyId !== null).map((item) => item.companyId as number))
+  );
+
+  if (missingIds.length) {
+    const { data: companyRows } = await supabase
+      .from('companies')
+      .select('id, symbol')
+      .in('id', missingIds);
+    const map = new Map<number, string>();
+    companyRows?.forEach((row: any) => {
+      if (row?.id && row?.symbol) {
+        const recordSymbol = normalizeSymbol(String(row.symbol));
+        map.set(Number(row.id), recordSymbol);
+        companyCache.set(recordSymbol, {
+          id: Number(row.id),
+          symbol: recordSymbol,
+        });
+        companyIdCache.set(Number(row.id), {
+          id: Number(row.id),
+          symbol: recordSymbol,
+        });
+      }
+    });
+    prepared.forEach((item) => {
+      if (!item.symbol && item.companyId !== null && map.has(item.companyId)) {
+        item.symbol = map.get(item.companyId)!;
+      }
+    });
+  }
+
+  const bySymbol = new Map<string, TopMove>();
+  for (const row of prepared) {
+    if (!row.symbol || row.change === null || bySymbol.has(row.symbol)) continue;
+    bySymbol.set(row.symbol, {
+      symbol: row.symbol,
+      latest_price: Number.isFinite(row.price) ? row.price : 0,
+      change_percent: row.change,
+    });
+  }
+
+  
+  const arr = Array.from(bySymbol.values());
+  arr.sort((a, b) =>
+    order === 'desc'
+      ? (b.change_percent ?? 0) - (a.change_percent ?? 0)
+      : (a.change_percent ?? 0) - (b.change_percent ?? 0)
+  );
+  return arr.slice(0, limit);
+}
+
 export async function fetchTopGainers(limit = 5): Promise<TopMove[]> {
   const api = await fetchTopMoves(`/api/v1/market/gainers/top?limit=${limit}`, limit);
   if (api) return api;
 
-  const { data } = await supabase
-    .from('historical_data')
-    .select('*')
-    .order('trade_date', { ascending: false })
-    .limit(limit * 6);
-
-  if (!data?.length) return [];
-  const bySymbol = new Map<string, any>();
-  for (const row of data) {
-    const symbol = row.symbol ?? row.ticker ?? row.code;
-    if (!symbol || bySymbol.has(symbol)) continue;
-    const change =
-      pickNumber(row, ['change_percent', 'variation_percent', 'daily_change_percent']) ?? undefined;
-    if (change === undefined) continue;
-    bySymbol.set(symbol, {
-      symbol,
-      latest_price: Number(row.close ?? row.price ?? row.latest_price ?? 0),
-      change_percent: change,
-    });
-  }
-  return Array.from(bySymbol.values())
-    .sort((a, b) => (b.change_percent ?? 0) - (a.change_percent ?? 0))
-    .slice(0, limit);
+  return loadTopMovesFromSupabase(limit, 'desc');
 }
 
 export async function fetchTopLosers(limit = 5): Promise<TopMove[]> {
   const api = await fetchTopMoves(`/api/v1/market/losers/top?limit=${limit}`, limit);
   if (api) return api;
 
-  const { data } = await supabase
-    .from('historical_data')
-    .select('*')
-    .order('trade_date', { ascending: false })
-    .limit(limit * 6);
-
-  if (!data?.length) return [];
-  const bySymbol = new Map<string, any>();
-  for (const row of data) {
-    const symbol = row.symbol ?? row.ticker ?? row.code;
-    if (!symbol || bySymbol.has(symbol)) continue;
-    const change =
-      pickNumber(row, ['change_percent', 'variation_percent', 'daily_change_percent']) ?? undefined;
-    if (change === undefined) continue;
-    bySymbol.set(symbol, {
-      symbol,
-      latest_price: Number(row.close ?? row.price ?? row.latest_price ?? 0),
-      change_percent: change,
-    });
-  }
-  return Array.from(bySymbol.values())
-    .sort((a, b) => (a.change_percent ?? 0) - (b.change_percent ?? 0))
-    .slice(0, limit);
-}
-
+  return loadTopMovesFromSupabase(limit, 'asc');
 export type CompanyLite = { symbol: string; name?: string; sector?: string };
 
 async function loadCompaniesFromApi(): Promise<CompanyLite[] | null> {
@@ -519,6 +861,10 @@ export type CompanySeries = {
   last: { date?: string; price?: number; volume?: number; traded_value?: number } | null;
 };
 
+
+  
+  const companySeriesCache = new Map<string, CompanySeries>();
+  
 type TechnicalPoint = {
   mm5?: number;
   mm10?: number;
@@ -536,36 +882,51 @@ type TechnicalPoint = {
 };
 
 export async function fetchCompanySeries(symbol: string): Promise<CompanySeries> {
-  const { data: rows } = await supabase
-    .from('historical_data')
-    .select('*')
-    .eq('symbol', symbol)
-    .order('trade_date', { ascending: true })
-    .limit(260);
+  const normalized = normalizeSymbol(symbol);
+  const cached = companySeriesCache.get(normalized);
+  if (cached) return cached;
 
-  const history: (HistoryPoint & TechnicalPoint)[] = [];
-  if (rows?.length) {
-    for (const row of rows) {
-      const price = Number(row.close ?? row.price ?? row.latest_price ?? row.last_price ?? 0);
-      if (!price || !Number.isFinite(price)) continue;
-      const historyPoint: HistoryPoint & TechnicalPoint = {
-        date: pickDate(row, ['trade_date', 'date', 'day']) ?? '',
-        price,
-        volume: pickNumber(row, ['volume', 'total_volume', 'shares_traded']),
-        traded_value: pickNumber(row, ['traded_value', 'value', 'total_value']),
-        high: pickNumber(row, ['high', 'highest_price', 'high_price']),
-        low: pickNumber(row, ['low', 'lowest_price', 'low_price']),
-      };
-      history.push(historyPoint);
-    }
+  const company = await getCompanyRecord(normalized);
+  if (!company) {
+    const empty: CompanySeries = { history: [], forecast: [], last: null };
+    companySeriesCache.set(normalized, empty);
+    return empty;
   }
 
-  // Calcul des indicateurs techniques
-  if (history.length) {
-    const closes = history.map((p) => p.price);
-    const highs = history.map((p) => p.high ?? p.price);
-    const lows = history.map((p) => p.low ?? p.price);
+  const { data: rawRows } = await supabase
+    .from('historical_data')
+    .select('trade_date, price, close, latest_price, volume, value, high, low, company_id')
+    .eq('company_id', company.id)
+    .order('trade_date', { ascending: false })
+    .limit(420);
 
+  const sorted = (rawRows ?? []).sort((a, b) => {
+    const da = Date.parse(String(a.trade_date ?? ''));
+    const db = Date.parse(String(b.trade_date ?? ''));
+    if (!Number.isNaN(da) && !Number.isNaN(db)) return da - db;
+    return 0;
+  });
+
+  const allHistory: (HistoryPoint & TechnicalPoint)[] = [];
+  for (const row of sorted) {
+    const price = Number(row.close ?? row.price ?? row.latest_price ?? 0);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const historyPoint: HistoryPoint & TechnicalPoint = {
+      date: pickDate(row, ['trade_date', 'date', 'day']) ?? '',
+      price,
+      volume: pickNumber(row, ['volume', 'total_volume', 'shares_traded']),
+      traded_value: pickNumber(row, ['value', 'traded_value', 'total_value']),
+      high: pickNumber(row, ['high', 'highest_price', 'high_price']),
+      low: pickNumber(row, ['low', 'lowest_price', 'low_price']),
+    };
+    allHistory.push(historyPoint);
+  }
+
+  if (allHistory.length) {
+    const closes = allHistory.map((p) => p.price);
+    const highs = allHistory.map((p) => p.high ?? p.price);
+    const lows = allHistory.map((p) => p.low ?? p.price);
+    
     const mm5 = simpleMovingAverage(closes, 5);
     const mm10 = simpleMovingAverage(closes, 10);
     const mm20 = simpleMovingAverage(closes, 20);
@@ -575,7 +936,7 @@ export async function fetchCompanySeries(symbol: string): Promise<CompanySeries>
     const rsi = rsiSeries(closes, 20);
     const stoch = stochasticOscillator(closes, highs, lows, 20, 5);
 
-    history.forEach((point, idx) => {
+    allHistory.forEach((point, idx) => {
       point.mm5 = mm5[idx];
       point.mm10 = mm10[idx];
       point.mm20 = mm20[idx];
@@ -591,6 +952,13 @@ export async function fetchCompanySeries(symbol: string): Promise<CompanySeries>
       point.stoch_d = stoch.d[idx];
     });
   }
+
+  const startOfYear = new Date();
+  startOfYear.setMonth(0, 1);
+  startOfYear.setHours(0, 0, 0, 0);
+  const startDate = startOfYear.toISOString().slice(0, 10);
+  const filtered = allHistory.filter((point) => !point.date || point.date >= startDate);
+  const history = filtered.length ? filtered : allHistory;
 
   const forecast: ForecastPoint[] = [];
   const api = await getJson<any>(`/api/v1/predictions/${encodeURIComponent(symbol)}`);
@@ -609,26 +977,37 @@ export async function fetchCompanySeries(symbol: string): Promise<CompanySeries>
   if (!forecast.length) {
     const { data: supaPred } = await supabase
       .from('predictions')
-      .select('*')
-      .eq('symbol', symbol)
+      .select('prediction_date, predicted_price, lower_bound, upper_bound, confidence_level, company_id')
+      .eq('company_id', company.id)
       .order('prediction_date', { ascending: true })
-      .limit(40);
-    if (supaPred?.length) {
-      for (const row of supaPred) {
-        forecast.push({
-          date: String(row.prediction_date ?? row.date ?? ''),
-          price: Number(row.predicted_price ?? row.price ?? 0),
-          lower: pickNumber(row, ['lower_bound', 'lower']),
-          upper: pickNumber(row, ['upper_bound', 'upper']),
-          confidence: row.confidence_level ?? row.confidence ?? undefined,
-        });
-      }
-    }
+      .limit(60);
+    supaPred?.forEach((row: any) => {
+      forecast.push({
+        date: String(row.prediction_date ?? row.date ?? ''),
+        price: Number(row.predicted_price ?? row.price ?? 0),
+        lower: pickNumber(row, ['lower_bound', 'lower']),
+        upper: pickNumber(row, ['upper_bound', 'upper']),
+        confidence: row.confidence_level ?? row.confidence ?? undefined,
+      });
+    });    
   }
 
-  const last = history.length ? history[history.length - 1] : null;
-
-  return { history, forecast, last };
+  const latestPoint = allHistory.length ? allHistory[allHistory.length - 1] : null;
+  const last = latestPoint
+    ? {
+        date: latestPoint.date,
+        price: latestPoint.price,
+        volume: latestPoint.volume,
+        traded_value: latestPoint.traded_value,
+      }
+    : null;
+  
+  const series: CompanySeries = { history, forecast, last };
+  companySeriesCache.set(normalized, series);
+  if (company.symbol && company.symbol !== normalized) {
+    companySeriesCache.set(company.symbol, series);
+  }
+  return series;
 }
 
 export type TechnicalSummary = {
@@ -636,6 +1015,15 @@ export type TechnicalSummary = {
   details: Array<{ name: string; decision: string; value?: string }>;
 };
 
+  const percentFormatter = new Intl.NumberFormat('fr-FR', {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+});
+
+const priceFormatter = new Intl.NumberFormat('fr-FR', {
+  maximumFractionDigits: 2,
+});
+  
 export async function fetchTechnicalSummary(symbol: string): Promise<TechnicalSummary> {
   const api = await getJson<any>(`/api/v1/analysis/${encodeURIComponent(symbol)}/signals`);
   if (api?.overall) {
@@ -651,48 +1039,107 @@ export async function fetchTechnicalSummary(symbol: string): Promise<TechnicalSu
     };
   }
 
-  const { data } = await supabase
-    .from('technical_analysis')
-    .select('*')
-    .eq('symbol', symbol)
-    .order('as_of_date', { ascending: false })
-    .limit(1);
-
-  if (!data?.length) {
+  const series = await fetchCompanySeries(symbol);
+  const history = series.history;
+  if (!history.length) {
     return { overall: 'Indisponible', details: [] };
   }
 
-  const row = data[0];
+   const last = history[history.length - 1];
+  const prev = history.length > 1 ? history[history.length - 2] : last;
+
+  const toPrice = (value?: number) =>
+    value === undefined || value === null || Number.isNaN(Number(value))
+      ? '-'
+      : priceFormatter.format(Number(value));
+
+  const toPercent = (value?: number) =>
+    value === undefined || value === null || Number.isNaN(Number(value))
+      ? '-'
+      : percentFormatter.format(Number(value));
+
+  const maSignals = [
+    last.mm5 !== undefined && last.mm20 !== undefined ? last.mm5 - last.mm20 : 0,
+    last.mm20 !== undefined && last.mm50 !== undefined ? last.mm20 - last.mm50 : 0,
+    last.price !== undefined && last.mm20 !== undefined ? last.price - last.mm20 : 0,
+  ];
+  const maPositives = maSignals.filter((value) => value > 0).length;
+  const maNegatives = maSignals.filter((value) => value < 0).length;
+  let maDecision: TechnicalSummary['overall'] = 'Neutre';
+  if (maPositives > maNegatives) maDecision = 'Achat';
+  else if (maNegatives > maPositives) maDecision = 'Vente';
+
+  let bollDecision: TechnicalSummary['overall'] = 'Neutre';
+  if (last.price !== undefined && last.bb_upper !== undefined && last.price >= last.bb_upper) {
+    bollDecision = 'Vente';
+  } else if (last.price !== undefined && last.bb_lower !== undefined && last.price <= last.bb_lower) {
+    bollDecision = 'Achat';
+  }
+
+  let macdDecision: TechnicalSummary['overall'] = 'Neutre';
+  if (last.macd !== undefined && last.signal !== undefined) {
+    if (last.macd > last.signal) macdDecision = 'Achat';
+    else if (last.macd < last.signal) macdDecision = 'Vente';
+  }
+
+  let rsiDecision: TechnicalSummary['overall'] = 'Neutre';
+  if (last.rsi !== undefined) {
+    if (last.rsi <= 30) rsiDecision = 'Achat';
+    else if (last.rsi >= 70) rsiDecision = 'Vente';
+  }
+
+  let stochDecision: TechnicalSummary['overall'] = 'Neutre';
+  if (last.stoch_k !== undefined) {
+    if (last.stoch_k <= 20) stochDecision = 'Achat';
+    else if (last.stoch_k >= 80) stochDecision = 'Vente';
+  }
+
+  const dailyChange =
+    last.price !== undefined && prev.price !== undefined
+      ? ((last.price - prev.price) / prev.price) * 100
+      : undefined;
+  
   const details = [
     {
+      name: 'Cours',
+      decision: dailyChange !== undefined ? (dailyChange >= 0 ? 'Hausse journalière' : 'Baisse journalière') : 'N/A',
+      value:
+        last.price !== undefined
+          ? `${toPrice(last.price)} FCFA (${dailyChange !== undefined ? `${toPercent(dailyChange)}%` : '—'})`
+          : undefined,
+    },
+    {
       name: 'Moyennes mobiles',
-      decision: row.ma_signal ?? row.mm_signal ?? 'N/A',
-      value: `MM5: ${row.mm5 ?? '-'} / MM10: ${row.mm10 ?? '-'} / MM20: ${row.mm20 ?? '-'} / MM50: ${row.mm50 ?? '-'}`,
+      decision: maDecision,
+      value: `MM5: ${toPrice(last.mm5)} / MM20: ${toPrice(last.mm20)} / MM50: ${toPrice(last.mm50)}`,
     },
     {
       name: 'Bandes de Bollinger',
-      decision: row.bollinger_signal ?? 'N/A',
-      value: `Centre: ${row.bb_mid ?? '-'} / Sup: ${row.bb_upper ?? '-'} / Inf: ${row.bb_lower ?? '-'}`,
+      decision: bollDecision,
+      value: `Centre: ${toPrice(last.bb_mid)} / Sup: ${toPrice(last.bb_upper)} / Inf: ${toPrice(last.bb_lower)}`,
     },
     {
       name: 'MACD',
-      decision: row.macd_signal ?? row.macd_signal_line ?? 'N/A',
-      value: `MACD: ${row.macd ?? '-'} / Signal: ${row.macd_signal_line ?? '-'} / Hist: ${row.macd_hist ?? '-'}`,
+      decision: macdDecision,
+      value: `MACD: ${toPrice(last.macd)} / Signal: ${toPrice(last.signal)} / Hist: ${toPrice(last.hist)}`,
     },
     {
       name: 'RSI',
-      decision: row.rsi_signal ?? 'N/A',
-      value: `RSI: ${row.rsi ?? '-'}`,
+      decision: rsiDecision,
+      value: last.rsi !== undefined ? `${toPercent(last.rsi)} pts` : undefined,
     },
     {
       name: 'Stochastique',
-      decision: row.stoch_signal ?? 'N/A',
-      value: `%K: ${row.stoch_k ?? '-'} / %D: ${row.stoch_d ?? '-'}`,
+      decision: stochDecision,
+      value:
+        last.stoch_k !== undefined
+          ? `%K: ${toPercent(last.stoch_k)} / %D: ${toPercent(last.stoch_d)}`
+          : undefined,
     },
   ];
 
   const buy = details.filter((item) => /achat/i.test(item.decision ?? '')).length;
-  const sell = details.filter((item) => /vente/i.test(item.decision ?? '')).length;
+  const sell = details.filter((item) => /vente|baisse/i.test(item.decision ?? '')).length;
   const overall: TechnicalSummary['overall'] =
     buy > sell ? 'Achat' : sell > buy ? 'Vente' : 'Neutre';
 
@@ -704,7 +1151,88 @@ export type FundamentalSummary = {
   last_report?: { title?: string; date?: string; url?: string };
 };
 
-export async function fetchFundamentalSummary(symbol: string): Promise<FundamentalSummary> {
+function interpretPer(per?: number | null) {
+  if (per === undefined || per === null || Number.isNaN(Number(per))) return null;
+  if (per <= 8) return 'valorisation attractive';
+  if (per >= 22) return 'valorisation exigeante';
+  return 'valorisation en ligne avec le marché';
+}
+
+function interpretPbr(pbr?: number | null) {
+  if (pbr === undefined || pbr === null || Number.isNaN(Number(pbr))) return null;
+  if (pbr <= 1) return 'décote par rapport aux capitaux propres';
+  if (pbr >= 2) return 'prime significative sur les fonds propres';
+  return 'valorisation équilibrée';
+}
+
+function interpretRoe(roe?: number | null) {
+  if (roe === undefined || roe === null || Number.isNaN(Number(roe))) return null;
+  if (roe >= 15) return 'rentabilité élevée';
+  if (roe <= 5) return 'rentabilité limitée';
+  return 'rentabilité correcte';
+}
+
+function interpretDividend(dividend?: number | null) {
+  if (dividend === undefined || dividend === null || Number.isNaN(Number(dividend))) return null;
+  if (dividend >= 5) return 'rendement généreux';
+  if (dividend <= 2) return 'rendement modeste';
+  return 'rendement en ligne avec le marché';
+}
+
+function buildFundamentalNarrative(row: {
+  symbol?: string;
+  company_name?: string;
+  summary?: string | null;
+  recommendation?: string | null;
+  per?: number | null;
+  pbr?: number | null;
+  roe?: number | null;
+  roa?: number | null;
+  dividend_yield?: number | null;
+}) {
+  if (!row) return 'Analyse fondamentale indisponible pour le moment.';
+  const chunks: string[] = [];
+  if (row.summary) {
+    chunks.push(String(row.summary).trim());
+  }
+
+  const ratioInsights: string[] = [];
+  if (row.per !== undefined && row.per !== null) {
+    const insight = interpretPer(Number(row.per));
+    ratioInsights.push(`PER à ${Number(row.per).toFixed(1)}x${insight ? ` (${insight})` : ''}`);
+  }
+  if (row.pbr !== undefined && row.pbr !== null) {
+    const insight = interpretPbr(Number(row.pbr));
+    ratioInsights.push(`P/BV de ${Number(row.pbr).toFixed(1)}${insight ? ` (${insight})` : ''}`);
+  }
+  if (row.roe !== undefined && row.roe !== null) {
+    const insight = interpretRoe(Number(row.roe));
+    ratioInsights.push(`ROE ${Number(row.roe).toFixed(1)} %${insight ? ` (${insight})` : ''}`);
+  }
+  if (row.roa !== undefined && row.roa !== null) {
+    ratioInsights.push(`ROA ${Number(row.roa).toFixed(1)} %`);
+  }
+  if (row.dividend_yield !== undefined && row.dividend_yield !== null) {
+    const insight = interpretDividend(Number(row.dividend_yield));
+    ratioInsights.push(`Dividende ${Number(row.dividend_yield).toFixed(2)} %${insight ? ` (${insight})` : ''}`);
+  }
+
+  if (ratioInsights.length) {
+    chunks.push(ratioInsights.join(' • '));
+  }
+
+  if (row.recommendation) {
+    chunks.push(`Recommandation actuelle : ${row.recommendation}.`);
+  }
+
+  if (!chunks.length) {
+    chunks.push('Les indicateurs fondamentaux seront publiés prochainement.');
+  }
+
+  return chunks.join(' ');
+}
+  
+  export async function fetchFundamentalSummary(symbol: string): Promise<FundamentalSummary> {
   const api = await getJson<any>(`/api/v1/fundamentals/company/${encodeURIComponent(symbol)}`);
   if (api?.summary) {
     return {
@@ -713,26 +1241,68 @@ export async function fetchFundamentalSummary(symbol: string): Promise<Fundament
     };
   }
 
-  const { data } = await supabase
-    .from('fundamental_analysis')
-    .select('*')
-    .eq('symbol', symbol)
-    .order('analyzed_at', { ascending: false })
+    const normalized = normalizeSymbol(symbol);
+    const { data: fundamentalRows } = await supabase
+    .from('fundamental_data')
+    .select(
+      'summary, recommendation, report_title, report_date, report_url, symbol, per, pbr, roe, roa, dividend_yield'
+    )
+    .eq('symbol', normalized)
+    .order('report_date', { ascending: false })
     .limit(1);
 
-  if (!data?.length) {
+  if (fundamentalRows?.length) {
+    const row = fundamentalRows[0];
+    return {
+      summary: buildFundamentalNarrative(row),
+      last_report: {
+        title: row.report_title ?? undefined,
+        date: row.report_date ?? undefined,
+        url: row.report_url ?? undefined,
+      },
+    };
+  }
+
+  const company = await getCompanyRecord(normalized);
+  if (!company) {
     return { summary: 'Analyse fondamentale indisponible pour le moment.' };
   }
 
-  const row = data[0];
-  return {
-    summary: row.summary ?? row.synthesis ?? 'Analyse fondamentale indisponible.',
-    last_report: {
-      title: row.report_title ?? row.document_title,
-      date: row.report_date ?? row.document_date,
-      url: row.report_url ?? row.document_url,
-    },
-  };
+  const { data: analysisRows } = await supabase
+    .from('fundamental_analysis')
+    .select('analysis_summary, report_title, report_date, report_url, company_id')
+    .eq('company_id', company.id)
+    .order('report_date', { ascending: false })
+    .limit(1);
+
+  if (analysisRows?.length) {
+    const row = analysisRows[0];
+    let summaryText = row.analysis_summary ?? '';
+    if (!summaryText) {
+      const metrics = await fetchFundamentalMetrics(symbol);
+      summaryText = buildFundamentalNarrative({
+        symbol,
+        company_name: company.name,
+        summary: row.analysis_summary,
+        recommendation: metrics?.recommendation ?? null,
+        per: metrics?.per ?? null,
+        pbr: metrics?.pbr ?? null,
+        roe: metrics?.roe ?? null,
+        roa: metrics?.roa ?? null,
+        dividend_yield: metrics?.dividend_yield ?? null,
+      });
+    }
+    return {
+      summary: summaryText || 'Analyse fondamentale indisponible pour le moment.',
+      last_report: {
+        title: row.report_title ?? undefined,
+        date: row.report_date ?? undefined,
+        url: row.report_url ?? undefined,
+      },
+    };
+  }
+
+  return { summary: 'Analyse fondamentale indisponible pour le moment.' };
 }
 
 export async function fetchCompanyFundamentals(symbol: string) {
@@ -749,27 +1319,65 @@ export async function fetchTechnicalGlobalSummary(): Promise<{ summary: string }
     .order('as_of_date', { ascending: false })
     .limit(100);
 
-  if (!data?.length) {
-    return { summary: 'Les signaux techniques globaux seront bientôt disponibles.' };
+  let summaryParts: string[] = [];
+  if (data?.length) {
+    const counts = data.reduce(
+      (acc, row) => {
+        const signal = String(row.overall_signal ?? '').toLowerCase();
+        if (signal.includes('achat')) acc.buy += 1;
+        else if (signal.includes('vente')) acc.sell += 1;
+        else acc.neutral += 1;
+        return acc;
+      },
+      { buy: 0, sell: 0, neutral: 0 }
+    );
+
+    const total = counts.buy + counts.sell + counts.neutral;
+    if (total > 0) {
+      summaryParts.push(
+        `Signaux consolidés : ${counts.buy} achats, ${counts.sell} ventes, ${counts.neutral} neutres (${total} sociétés suivies)`
+      );
+    }
   }
 
-  const counts = data.reduce(
-    (acc, row) => {
-      const signal = String(row.overall_signal ?? '').toLowerCase();
-      if (signal.includes('achat')) acc.buy += 1;
-      else if (signal.includes('vente')) acc.sell += 1;
-      else acc.neutral += 1;
-      return acc;
-    },
-    { buy: 0, sell: 0, neutral: 0 }
-  );
+const { data: techData } = await supabase
+    .from('technical_data')
+    .select('symbol, rsi, macd, signal, histogram, trend, ma20, ma50, trade_date')
+    .order('trade_date', { ascending: false })
+    .limit(400);
 
-  const total = counts.buy + counts.sell + counts.neutral;
-  const summary =
-    total === 0
-      ? 'Les signaux techniques globaux seront bientôt disponibles.'
-      : `Signal global: ${counts.buy} achats, ${counts.sell} ventes, ${counts.neutral} neutres sur ${total} sociétés surveillées.`;
-  return { summary };
+  if (techData?.length) {
+    const seen = new Set<string>();
+    const latestBySymbol: any[] = [];
+    for (const row of techData) {
+      const symbol = String(row.symbol ?? '').toUpperCase();
+      if (!symbol || seen.has(symbol)) continue;
+      seen.add(symbol);
+      latestBySymbol.push(row);
+    }
+
+    const oversold = latestBySymbol.filter((row) => Number(row.rsi ?? 0) <= 30).length;
+    const overbought = latestBySymbol.filter((row) => Number(row.rsi ?? 0) >= 70).length;
+    const macdPositive = latestBySymbol.filter((row) => Number(row.macd ?? 0) > Number(row.signal ?? 0)).length;
+    const bullishTrends = latestBySymbol.filter((row) =>
+      String(row.trend ?? '').toLowerCase().includes('haus') ||
+      Number(row.ma20 ?? 0) > Number(row.ma50 ?? 0)
+    ).length;
+
+    if (latestBySymbol.length) {
+      summaryParts.push(
+        `RSI : ${oversold} survendus / ${overbought} surachetés`,
+        `MACD haussier sur ${macdPositive} valeurs`,
+        `Tendance haussière détectée sur ${bullishTrends} titres`
+      );
+    }
+  }
+
+  if (!summaryParts.length) {
+    return { summary: 'Les signaux techniques globaux seront bientôt disponibles.' };
+  }  
+
+  return { summary: summaryParts.join('. ') + '.' };
 }
 
 export async function fetchFundamentalGlobalSummary(): Promise<{ summary: string }> {
@@ -777,23 +1385,57 @@ export async function fetchFundamentalGlobalSummary(): Promise<{ summary: string
   if (api?.summary) return { summary: api.summary };
 
   const { data } = await supabase
-    .from('fundamental_analysis')
-    .select('symbol, summary, report_title')
-    .order('analyzed_at', { ascending: false })
+    .from('fundamental_data')
+    .select('symbol, recommendation, summary, report_title, report_date, per, pbr, roe, roa, dividend_yield')
+    .order('report_date', { ascending: false })
     .limit(20);
 
   if (!data?.length) {
     return { summary: 'Les derniers rapports fondamentaux seront publiés prochainement.' };
   }
 
-  const highlights = data.slice(0, 5).map((row: any) => {
-    const symbol = row.symbol ?? '—';
-    const title = row.report_title ?? 'Rapport';
-    return `${symbol}: ${title}`;
-  });
+  const perValues = data
+    .map((row: any) => Number(row.per ?? row.per_ratio))
+    .filter((value) => Number.isFinite(value));
+  const roeValues = data
+    .map((row: any) => Number(row.roe ?? row.roe_percent))
+    .filter((value) => Number.isFinite(value));
+  const dividendLeaders = data
+    .filter((row: any) => Number.isFinite(Number(row.dividend_yield)))
+    .sort((a: any, b: any) => Number(b.dividend_yield ?? 0) - Number(a.dividend_yield ?? 0))
+    .slice(0, 3)
+    .map(
+      (row: any) =>
+        `${row.symbol}: ${(Number(row.dividend_yield ?? 0)).toFixed(1)} %`
+    );
 
+  const buySignals = data
+    .filter((row: any) => /achat|buy/i.test(String(row.recommendation ?? row.summary ?? '')))
+    .map((row: any) => row.symbol)
+    .filter(Boolean)
+    .slice(0, 5);
+
+  const avgPer = perValues.length
+    ? perValues.reduce((sum, value) => sum + value, 0) / perValues.length
+    : null;
+  const medianRoe = (() => {
+    if (!roeValues.length) return null;
+    const sorted = [...roeValues].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+  })();
+
+  const parts: string[] = [];
+  parts.push(`Échantillon de ${data.length} sociétés analysées`);
+  if (avgPer !== null) parts.push(`PER moyen ${avgPer.toFixed(1)}x`);
+  if (medianRoe !== null) parts.push(`ROE médian ${medianRoe.toFixed(1)} %`);
+  if (dividendLeaders.length) parts.push(`Meilleurs rendements : ${dividendLeaders.join(', ')}`);
+  if (buySignals.length) parts.push(`Signaux d’achat actifs : ${buySignals.join(', ')}`);
+  
   return {
-    summary: `Derniers rapports analysés — ${highlights.join(' • ')}.`,
+    summary: parts.join('. ') + '.',
   };
 }
 
@@ -801,7 +1443,50 @@ export async function fetchFundamentalsSummary() {
   return fetchFundamentalGlobalSummary();
 }
 
-export async function fetchListings() {
+export type FundamentalMetrics = {
+  symbol: string;
+  company_name?: string;
+  per?: number;
+  pbr?: number;
+  roe?: number;
+  roa?: number;
+  dividend_yield?: number;
+  recommendation?: string;
+  summary?: string;
+  report_date?: string;
+};
+
+export async function fetchFundamentalMetrics(symbol: string): Promise<FundamentalMetrics | null> {
+  const normalized = normalizeSymbol(symbol);
+  const { data } = await supabase
+    .from('fundamental_data')
+    .select(
+      'symbol, company_name, per, pbr, roe, roa, dividend_yield, recommendation, summary, report_date'
+    )
+    .eq('symbol', normalized)
+    .order('report_date', { ascending: false })
+    .limit(1);
+
+  if (!data?.length) return null;
+  const record = data[0] as FundamentalMetrics;
+  if (!record.summary || String(record.summary).trim().length === 0) {
+    record.summary = buildFundamentalNarrative(record);
+  }
+  return record;
+}
+
+export async function fetchFundamentalLeaders(limit = 20) {
+  const { data } = await supabase
+    .from('fundamental_data')
+    .select(
+      'symbol, company_name, per, pbr, roe, roa, dividend_yield, recommendation, summary, report_date'
+    )
+    .order('report_date', { ascending: false })
+    .limit(limit);
+  return data ?? [];
+}
+
+  export async function fetchListings() {
   const companies = await fetchCompanies();
   return { symbols: companies.map((c) => c.symbol) };
 }
@@ -818,22 +1503,25 @@ export async function fetchCompanyQuote(symbol: string) {
       change_percent: Number(c.change_percent ?? c.variation ?? 0),
     };
   }
-
+  
+  const company = await getCompanyRecord(symbol);
+  if (!company) return null;
+  
   const { data } = await supabase
     .from('historical_data')
-    .select('*')
-    .eq('symbol', symbol)
+    .select('price, close, latest_price, change_percent, variation_percent, daily_change_percent')
+    .eq('company_id', company.id)
     .order('trade_date', { ascending: false })
-    .limit(1)
-    .single();
+    .limit(1);
 
-  if (!data) return null;
-  const latest = Number(data.close ?? data.price ?? data.latest_price ?? 0);
+  const row = data?.[0];
+  if (!row) return null;
+  const latest = Number(row.close ?? row.price ?? row.latest_price ?? 0);
   return {
-    symbol,
+    symbol: company.symbol,
     latest_price: latest,
     price: latest,
-    change_percent: pickNumber(data, ['change_percent', 'variation_percent', 'daily_change_percent']) ?? 0,
+    change_percent: pickNumber(row, ['change_percent', 'variation_percent', 'daily_change_percent']) ?? 0,
   };
 }
 
@@ -851,9 +1539,9 @@ export async function fetchPredictions(symbol: string) {
 
 export async function fetchSignals() {
   const { data } = await supabase
-    .from('technical_analysis')
-    .select('symbol, overall_signal, signal_score')
-    .order('as_of_date', { ascending: false })
+    .from('recommendations')
+    .select('symbol, recommendation, variation_pred')
+    .order('updated_at', { ascending: false })
     .limit(200);
 
   const buys: Array<{ symbol: string; score: number }> = [];
@@ -861,13 +1549,13 @@ export async function fetchSignals() {
 
   if (data?.length) {
     for (const row of data) {
-      const symbol = row.symbol ?? '';
+      const symbol = normalizeSymbol(row.symbol ?? '');
       if (!symbol) continue;
-      const score = Number(row.signal_score ?? 0);
-      const signal = String(row.overall_signal ?? '').toLowerCase();
-      if (signal.includes('achat')) {
+       const score = Number(row.variation_pred ?? 0);
+       const signal = String(row.recommendation ?? '').toLowerCase();
+       if (signal.includes('achat') || signal.includes('buy')) {
         buys.push({ symbol, score: Number.isFinite(score) ? score : 0 });
-      } else if (signal.includes('vente')) {
+       } else if (signal.includes('vente') || signal.includes('sell')) {
         sells.push({ symbol, score: Number.isFinite(score) ? Math.abs(score) : 0 });
       }
     }
@@ -888,16 +1576,17 @@ export async function getCompanyAnalysis(symbol: string) {
   return data?.[0] ?? null;
 }
 
-export async function getRecommendations() {
-  const api = await getJson<any>('/api/v1/recommendations');
-  if (api?.recommendations) return api.recommendations;
-
-  const { data } = await supabase
-    .from('technical_analysis')
-    .select('symbol, sector, recommendation, overall_signal')
-    .order('as_of_date', { ascending: false })
-    .limit(200);
-  return data ?? [];
+export async function getRecommendations(): Promise<RecommendationPayload> {
+  if (typeof window !== 'undefined') {
+    const response = await fetch('/api/recommendations', { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error('Impossible de récupérer les recommandations.');
+    }
+    return (await response.json()) as RecommendationPayload;
+  }
+  
+  const { buildRecommendationsDataset } = await import('@/lib/server/recommendations');
+  return buildRecommendationsDataset();
 }
 
 export async function recordPayment(paymentData: {
