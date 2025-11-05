@@ -4,30 +4,26 @@ import { useEffect, useState } from 'react';
 import {
   fetchCompanies,
   fetchFundamentalSummary,
+  fetchFundamentalGlobalSummary,
+  fetchFundamentalMetrics,
+  fetchFundamentalLeaders,
   type CompanyLite,
   type FundamentalSummary,
+  type FundamentalMetrics,
 } from '@/lib/api';
 import Card from '@/components/ui/Card';
 
-type FinancialMetrics = {
-  revenue?: number;
-  profit?: number;
-  eps?: number;
-  pe_ratio?: number;
-  pb_ratio?: number;
-  dividend_yield?: number;
-  roa?: number;
-  roe?: number;
-  debt_ratio?: number;
-  market_cap?: number;
-  report_date?: string;
-};
+const percentFmt = new Intl.NumberFormat('fr-FR', {
+  maximumFractionDigits: 2,
+});
 
 export default function FundamentalPage() {
   const [companies, setCompanies] = useState<CompanyLite[]>([]);
   const [symbol, setSymbol] = useState('');
   const [summary, setSummary] = useState<FundamentalSummary | null>(null);
-  const [metrics, setMetrics] = useState<FinancialMetrics | null>(null);
+  const [metrics, setMetrics] = useState<FundamentalMetrics | null>(null);
+  const [globalSummary, setGlobalSummary] = useState('');
+  const [leaders, setLeaders] = useState<FundamentalMetrics[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -35,6 +31,13 @@ export default function FundamentalPage() {
       const list = await fetchCompanies();
       setCompanies(list);
       if (list.length && !symbol) setSymbol(list[0].symbol);
+
+      const [global, top] = await Promise.all([
+        fetchFundamentalGlobalSummary(),
+        fetchFundamentalLeaders(12),
+      ]);
+      setGlobalSummary(global.summary);
+      setLeaders(top ?? []);
     })();
   }, []); // eslint-disable-line
 
@@ -44,19 +47,11 @@ export default function FundamentalPage() {
     try {
       const fund = await fetchFundamentalSummary(symbol);
       setSummary(fund);
-
-      // Récupération Supabase (ratios financiers)
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/fundamentals/metrics/${encodeURIComponent(symbol)}`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setMetrics(data);
-      } else {
-        setMetrics(null);
-      }
-    } catch (e) {
-      console.error(e);
+      const ratios = await fetchFundamentalMetrics(symbol);
+      setMetrics(ratios);
+    } catch (error) {
+      console.error(error);
+      setMetrics(null);
     } finally {
       setLoading(false);
     }
@@ -65,6 +60,13 @@ export default function FundamentalPage() {
   return (
     <div className="p-6 space-y-8">
       <h1 className="text-2xl font-bold">Analyse Fondamentale — BRVM</h1>
+
+      {globalSummary && (
+        <Card>
+          <div className="font-semibold text-lg mb-2">Résumé global</div>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">{globalSummary}</p>
+        </Card>
+      )}
 
       {/* Sélecteur société */}
       <Card>
@@ -94,10 +96,11 @@ export default function FundamentalPage() {
       </Card>
 
       {!summary ? (
-        <div className="text-gray-500 text-sm">Sélectionnez une société et cliquez sur <b>Valider</b>.</div>
+        <div className="text-gray-500 text-sm">
+          Sélectionnez une société et cliquez sur <b>Valider</b>.
+        </div>
       ) : (
         <>
-          {/* Résumé analytique */}
           <Card>
             <div className="font-semibold text-lg mb-2">Résumé analytique</div>
             <div className="text-sm whitespace-pre-wrap">{summary.summary}</div>
@@ -113,65 +116,104 @@ export default function FundamentalPage() {
             )}
           </Card>
 
-          {/* Ratios financiers */}
-          {metrics && (
+          {metrics ? (
             <Card>
               <div className="font-semibold text-lg mb-2">Ratios financiers clés</div>
               <div className="grid md:grid-cols-3 gap-4 text-sm">
                 <div>
-                  <p className="text-gray-500">Chiffre d'affaires</p>
-                  <p className="text-lg font-semibold">{metrics.revenue?.toLocaleString() ?? '—'} FCFA</p>
+                  <p className="text-gray-500">PER</p>
+                  <p className="text-lg font-semibold">
+                    {metrics.per !== undefined ? metrics.per.toFixed(2) : '—'}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Résultat net</p>
-                  <p className="text-lg font-semibold">{metrics.profit?.toLocaleString() ?? '—'} FCFA</p>
+                  <p className="text-gray-500">P/BV</p>
+                  <p className="text-lg font-semibold">
+                    {metrics.pbr !== undefined ? metrics.pbr.toFixed(2) : '—'}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-gray-500">EPS (Bénéfice par action)</p>
-                  <p className="text-lg font-semibold">{metrics.eps?.toFixed(2) ?? '—'}</p>
+                  <p className="text-gray-500">Dividende (%)</p>
+                  <p className="text-lg font-semibold">
+                    {metrics.dividend_yield !== undefined
+                      ? percentFmt.format(metrics.dividend_yield)
+                      : '—'}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-gray-500">PER (Price/Earnings)</p>
-                  <p className="text-lg font-semibold">{metrics.pe_ratio?.toFixed(2) ?? '—'}</p>
+                  <p className="text-gray-500">ROA</p>
+                  <p className="text-lg font-semibold">
+                    {metrics.roa !== undefined ? `${percentFmt.format(metrics.roa)} %` : '—'}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-gray-500">PBV (Price/Book)</p>
-                  <p className="text-lg font-semibold">{metrics.pb_ratio?.toFixed(2) ?? '—'}</p>
+                   <p className="text-gray-500">ROE</p>
+                  <p className="text-lg font-semibold">
+                    {metrics.roe !== undefined ? `${percentFmt.format(metrics.roe)} %` : '—'}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Rendement du dividende</p>
-                  <p className="text-lg font-semibold">{metrics.dividend_yield?.toFixed(2) ?? '—'} %</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">ROA (Rentabilité des actifs)</p>
-                  <p className="text-lg font-semibold">{metrics.roa?.toFixed(2) ?? '—'} %</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">ROE (Rentabilité des capitaux propres)</p>
-                  <p className="text-lg font-semibold">{metrics.roe?.toFixed(2) ?? '—'} %</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Ratio d'endettement</p>
-                  <p className="text-lg font-semibold">{metrics.debt_ratio?.toFixed(2) ?? '—'} %</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Capitalisation boursière</p>
-                  <p className="text-lg font-semibold">{metrics.market_cap?.toLocaleString() ?? '—'} FCFA</p>
+                  <p className="text-gray-500">Recommandation</p>
+                  <p className="text-lg font-semibold">{metrics.recommendation ?? '—'}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Date du rapport</p>
                   <p className="text-lg font-semibold">{metrics.report_date ?? '—'}</p>
                 </div>
+                <div className="md:col-span-3">
+                  <p className="text-gray-500">Résumé</p>
+                  <p className="text-sm leading-relaxed">{metrics.summary ?? '—'}</p>
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <Card>
+              <div className="text-gray-500 text-sm">
+                Aucun ratio financier disponible pour cette société.
               </div>
             </Card>
           )}
-
-          {!metrics && (
-            <Card>
-              <div className="text-gray-500 text-sm">Aucun ratio financier disponible pour cette société.</div>
-            </Card>
-          )}
         </>
+      )}
+
+      {leaders.length > 0 && (
+        <Card>
+          <div className="font-semibold text-lg mb-3">Tableau de bord fondamental</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs md:text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="p-2 text-left">Symbole</th>
+                  <th className="p-2 text-left">Société</th>
+                  <th className="p-2 text-right">PER</th>
+                  <th className="p-2 text-right">P/BV</th>
+                  <th className="p-2 text-right">ROE</th>
+                  <th className="p-2 text-right">Dividende</th>
+                  <th className="p-2 text-left">Reco.</th>
+                  <th className="p-2 text-left">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaders.map((row) => (
+                  <tr key={`leader-${row.symbol}`} className="border-b">
+                    <td className="p-2 font-semibold">{row.symbol}</td>
+                    <td className="p-2">{row.company_name ?? '—'}</td>
+                    <td className="p-2 text-right">{row.per !== undefined ? row.per.toFixed(2) : '—'}</td>
+                    <td className="p-2 text-right">{row.pbr !== undefined ? row.pbr.toFixed(2) : '—'}</td>
+                    <td className="p-2 text-right">
+                      {row.roe !== undefined ? `${percentFmt.format(row.roe)} %` : '—'}
+                    </td>
+                    <td className="p-2 text-right">
+                      {row.dividend_yield !== undefined ? `${percentFmt.format(row.dividend_yield)} %` : '—'}
+                    </td>
+                    <td className="p-2">{row.recommendation ?? row.summary ?? '—'}</td>
+                    <td className="p-2">{row.report_date ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   );
