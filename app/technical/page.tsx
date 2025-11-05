@@ -22,6 +22,7 @@ import {
   fetchCompanySeries,
   type CompanyLite,
   type TechnicalSummary,
+  fetchTechnicalGlobalSummary,
 } from '@/lib/api';
 import Card from '@/components/ui/Card';
 
@@ -48,6 +49,7 @@ export default function TechnicalPage() {
   const [symbol, setSymbol] = useState('');
   const [data, setData] = useState<IndicatorData[]>([]);
   const [summary, setSummary] = useState<TechnicalSummary | null>(null);
+  const [globalSummary, setGlobalSummary] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -55,6 +57,8 @@ export default function TechnicalPage() {
       const list = await fetchCompanies();
       setCompanies(list);
       if (list.length && !symbol) setSymbol(list[0].symbol);
+      const global = await fetchTechnicalGlobalSummary();
+      setGlobalSummary(global.summary);
     })();
   }, []); // eslint-disable-line
 
@@ -97,6 +101,13 @@ export default function TechnicalPage() {
   return (
     <div className="p-6 space-y-8">
       <h1 className="text-2xl font-bold">Analyse Technique — BRVM</h1>
+
+      {globalSummary && (
+        <Card>
+          <div className="font-semibold text-lg mb-1">Résumé global du marché</div>
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{globalSummary}</p>
+        </Card>
+      )}
 
       {/* Sélecteur société */}
       <Card>
