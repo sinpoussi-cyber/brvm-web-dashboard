@@ -794,6 +794,8 @@ export async function fetchTopLosers(limit = 5): Promise<TopMove[]> {
   if (api) return api;
 
   return loadTopMovesFromSupabase(limit, 'asc');
+  }
+
 export type CompanyLite = { symbol: string; name?: string; sector?: string };
 
 async function loadCompaniesFromApi(): Promise<CompanyLite[] | null> {
