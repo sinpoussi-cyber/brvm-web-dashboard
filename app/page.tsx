@@ -40,6 +40,13 @@ type ActiveMetric = {
   title: string;
 };
 
+type MetricHistoryRow = {
+  date: string;
+  value: number;
+  variation_daily?: number;
+  variation_ytd?: number;
+};
+
 type UserProfile = {
   first_name?: string;
   last_name?: string;
@@ -96,20 +103,41 @@ useEffect(() => {
     const history = market?.history ?? [];
     const parse = (key: MetricKey) =>
       history
-        .map((row) => {
-          const base: Record<MetricKey, number | undefined> = {
-            capitalisation: row.capitalisation_globale,
-            volume: row.volume_moyen_annuel,
-            valeur: row.valeur_moyenne_annuelle,
-          };
-          return base[key] !== undefined
-            ? {
-                date: row.date,
-                value: Number(base[key]),
-              }
-            : null;
+        .map<MetricHistoryRow | null>((row) => {
+          const config = {
+            capitalisation: {
+              value: row.capitalisation_globale,
+              daily: row.variation_j_cap,
+              ytd: row.variation_ytd_cap,
+            },
+            volume: {
+              value: row.volume_moyen_annuel,
+              daily: row.variation_j_vol,
+              ytd: row.variation_ytd_vol,
+            },
+            valeur: {
+              value: row.valeur_moyenne_annuelle,
+              daily: row.variation_j_val,
+              ytd: row.variation_ytd_val,
+            },
+          } as const;
+          const target = config[key];
+          if (target.value === undefined || target.value === null) return null;
+          if (!row.date) return null;
+          return {
+            date: row.date,
+            value: Number(target.value),
+            variation_daily:
+              target.daily !== undefined && target.daily !== null
+                ? Number(target.daily)
+                : undefined,
+            variation_ytd:
+              target.ytd !== undefined && target.ytd !== null
+                ? Number(target.ytd)
+                : undefined,
+          } satisfies MetricHistoryRow;
         })
-        .filter((row): row is { date: string; value: number } => Boolean(row?.date));
+        .filter((row): row is MetricHistoryRow => Boolean(row));
     return {
       capitalisation: parse('capitalisation'),
       volume: parse('volume'),
@@ -210,6 +238,12 @@ useEffect(() => {
                 {market.variation_j_cap >= 0 ? '+' : ''}
                 {percentFmt.format(market.variation_j_cap)}% / jour
               </p>
+              <p className={
+                market.variation_ytd_cap >= 0 ? 'text-green-600 text-xs' : 'text-red-600 text-xs'
+              }>
+                {market.variation_ytd_cap >= 0 ? '+' : ''}
+                {percentFmt.format(market.variation_ytd_cap)}% / YTD
+              </p>
               </button>
             <button
               type="button"
@@ -224,6 +258,12 @@ useEffect(() => {
                 {market.variation_j_vol >= 0 ? '+' : ''}
                 {percentFmt.format(market.variation_j_vol)}% / jour
               </p>
+              <p className={
+                market.variation_ytd_vol >= 0 ? 'text-green-600 text-xs' : 'text-red-600 text-xs'
+              }>
+                {market.variation_ytd_vol >= 0 ? '+' : ''}
+                {percentFmt.format(market.variation_ytd_vol)}% / YTD
+              </p>
               </button>
             <button
               type="button"
@@ -237,6 +277,12 @@ useEffect(() => {
               <p className={market.variation_j_val >= 0 ? 'text-green-600 text-sm' : 'text-red-600 text-sm'}>
                 {market.variation_j_val >= 0 ? '+' : ''}
                 {percentFmt.format(market.variation_j_val)}% / jour
+              </p>
+              <p className={
+                market.variation_ytd_val >= 0 ? 'text-green-600 text-xs' : 'text-red-600 text-xs'
+              }>
+                {market.variation_ytd_val >= 0 ? '+' : ''}
+                {percentFmt.format(market.variation_ytd_val)}% / YTD
               </p>
             </button>
           </div>
@@ -346,7 +392,7 @@ useEffect(() => {
               </thead>
               <tbody>
                 {[...activeIndex.history]
-                  .slice(-30)
+                  .slice(-90)
                   .reverse()
                   .map((row) => (
                     <tr key={`${activeIndex.code}-${row.date}`} className="border-b">
@@ -403,15 +449,27 @@ useEffect(() => {
                 <tr className="border-b">
                   <th className="p-2 text-left">Date</th>
                   <th className="p-2 text-right">Valeur</th>
+                  <th className="p-2 text-right">Var. Jour</th>
+                  <th className="p-2 text-right">Var. YTD</th>
                 </tr>
               </thead>
               <tbody>
                 {[...metricHistory[activeMetric.key]]
-                  .slice(-30)
+                  .slice(-90)
                   .reverse()
                   .map((row) => (
                     <tr key={`${activeMetric.key}-${row.date}`} className="border-b">
                       <td className="p-2">{row.date}</td>
+                      <td className="p-2 text-right">
+                        {row.variation_daily !== undefined
+                          ? `${percentFmt.format(row.variation_daily)}%`
+                          : '—'}
+                      </td>
+                      <td className="p-2 text-right">
+                        {row.variation_ytd !== undefined
+                          ? `${percentFmt.format(row.variation_ytd)}%`
+                          : '—'}
+                      </td>
                       <td className="p-2 text-right">{numberFmt.format(row.value)}</td>
                     </tr>
                   ))}
