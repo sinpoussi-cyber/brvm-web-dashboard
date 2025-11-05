@@ -7,14 +7,20 @@ import {
   fetchCompanies,
   fetchCompanySeries,
   fetchFundamentalSummary,
+  fetchFundamentalMetrics,
   fetchTechnicalSummary,
   type CompanyLite,
   type CompanySeries,
   type TechnicalSummary,
   type FundamentalSummary,
+  type FundamentalMetrics,
 } from '@/lib/api';
 
 const numberFmt = new Intl.NumberFormat('fr-FR', {
+  maximumFractionDigits: 2,
+});
+
+const percentFmt = new Intl.NumberFormat('fr-FR', {
   maximumFractionDigits: 2,
 });
 
@@ -24,6 +30,7 @@ export default function CompaniesPage() {
   const [series, setSeries] = useState<CompanySeries | null>(null);
   const [technical, setTechnical] = useState<TechnicalSummary | null>(null);
   const [fundamental, setFundamental] = useState<FundamentalSummary | null>(null);
+  const [metrics, setMetrics] = useState<FundamentalMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -76,20 +83,23 @@ export default function CompaniesPage() {
     setLoading(true);
     setError(null);
     try {
-      const [serieData, tech, fund] = await Promise.all([
+      const [serieData, tech, fund, ratios] = await Promise.all([
         fetchCompanySeries(selected),
         fetchTechnicalSummary(selected),
         fetchFundamentalSummary(selected),
+        fetchFundamentalMetrics(selected),
       ]);
       setSeries(serieData);
       setTechnical(tech);
       setFundamental(fund);
+      setMetrics(ratios);
     } catch (err) {
       console.error(err);
       setError('Impossible de récupérer les données pour cette société.');
       setSeries(null);
       setTechnical(null);
       setFundamental(null);
+      setMetrics(null);
     } finally {
       setLoading(false);
     }
@@ -127,14 +137,14 @@ export default function CompaniesPage() {
           title={`Cours ${selected} — Historique & Prévisions`}
           data={chartData}
           xKey="date"
-           lines={[
+          lines={[
             { dataKey: 'Historique', name: 'Historique', color: '#2563eb' },
             { dataKey: 'Prévision', name: 'Prévision', color: '#f97316' },
           ]}
         />
       )}
 
-            {series?.last && (
+      {series?.last && (
         <Card>
           <h2 className="text-lg font-semibold mb-2">Volumes & Valeurs de transaction</h2>
           <div className="grid md:grid-cols-3 gap-4 text-sm">
@@ -189,6 +199,58 @@ export default function CompaniesPage() {
           )}
         </Card>
       </div>
+
+      {metrics && (
+        <Card>
+          <h2 className="font-semibold mb-3">Ratios fondamentaux</h2>
+          <div className="grid md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <p className="text-gray-500">PER</p>
+              <p className="text-lg font-semibold">
+                {metrics.per !== undefined ? metrics.per.toFixed(2) : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500">P/BV</p>
+              <p className="text-lg font-semibold">
+                {metrics.pbr !== undefined ? metrics.pbr.toFixed(2) : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500">Dividende (%)</p>
+              <p className="text-lg font-semibold">
+                {metrics.dividend_yield !== undefined
+                  ? percentFmt.format(metrics.dividend_yield)
+                  : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500">ROA</p>
+              <p className="text-lg font-semibold">
+                {metrics.roa !== undefined ? `${percentFmt.format(metrics.roa)} %` : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500">ROE</p>
+              <p className="text-lg font-semibold">
+                {metrics.roe !== undefined ? `${percentFmt.format(metrics.roe)} %` : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500">Recommandation</p>
+              <p className="text-lg font-semibold">{metrics.recommendation ?? '—'}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Date du rapport</p>
+              <p className="text-lg font-semibold">{metrics.report_date ?? '—'}</p>
+            </div>
+            <div className="md:col-span-3">
+              <p className="text-gray-500">Résumé</p>
+              <p className="text-sm leading-relaxed">{metrics.summary ?? '—'}</p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card>
         <h2 className="font-semibold mb-2">Conseil d’investissement</h2>
