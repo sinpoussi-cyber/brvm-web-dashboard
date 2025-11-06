@@ -1,12 +1,14 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const supabase = await createClient();
     
     // Récupérer les données techniques récentes
-    const { data: technicalData, error } = await supabase
+    const { data: technicalDataRaw, error } = await supabase
       .from('technical_data')
       .select('*')
       .order('trade_date', { ascending: false });
@@ -16,7 +18,18 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     
-    if (!technicalData || technicalData.length === 0) {
+    type TechnicalData = {
+      symbol: string;
+      trade_date: string;
+      trend?: string | null;
+      rsi?: number | null;
+      macd?: number | null;
+      signal?: number | null;
+    };
+
+    const technicalData = (technicalDataRaw ?? []) as TechnicalData[];
+
+    if (technicalData.length === 0) {
       return NextResponse.json({
         bullish_signals: 0,
         bearish_signals: 0,
@@ -29,12 +42,12 @@ export async function GET() {
     }
     
     // Regrouper par symbole pour avoir seulement les données les plus récentes
-    const latestBySymbol = technicalData.reduce((acc, curr) => {
+    const latestBySymbol = technicalData.reduce<Record<string, TechnicalData>>((acc, curr) => {
       if (!acc[curr.symbol] || new Date(curr.trade_date) > new Date(acc[curr.symbol].trade_date)) {
         acc[curr.symbol] = curr;
       }
       return acc;
-    }, {} as Record<string, any>);
+    }, {});
     
     const latestData = Object.values(latestBySymbol);
     
