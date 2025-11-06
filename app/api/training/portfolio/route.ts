@@ -1,6 +1,33 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
+type PortfolioHolding = {
+  company_id: string;
+  quantity: number;
+  total_invested: number;
+  current_price?: number | null;
+  current_value?: number | null;
+  gain_loss?: number | null;
+  gain_loss_percent?: number | null;
+};
+
+type PortfolioResponse = {
+  id: string;
+  user_id: string;
+  name: string;
+  type: string;
+  initial_capital: number;
+  cash_balance: number;
+  is_active: boolean;
+  current_value?: number | null;
+  gain_loss?: number | null;
+  gain_loss_percent?: number | null;
+  holdings?: PortfolioHolding[];
+  [key: string]: unknown;
+};
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -13,7 +40,7 @@ export async function GET() {
     }
     
     // Récupérer le portefeuille virtuel de l'utilisateur
-    const { data: portfolio, error: portfolioError } = await supabase
+    const { data: portfolioRaw, error: portfolioError } = await supabase
       .from('portfolios')
       .select(`
         *,
@@ -35,6 +62,8 @@ export async function GET() {
       console.error('Erreur portfolio:', portfolioError);
       return NextResponse.json({ error: portfolioError.message }, { status: 500 });
     }
+
+    const portfolio = (portfolioRaw ?? null) as PortfolioResponse | null;
     
     if (!portfolio) {
       return NextResponse.json({ portfolio: null });
@@ -61,7 +90,9 @@ export async function GET() {
     }
     
     // Calculer la valeur totale du portefeuille
-    const holdingsValue = portfolio.holdings?.reduce((sum, h) => sum + (h.current_value || 0), 0) || 0;
+    const holdingsValue = portfolio.holdings?.reduce<number>((sum, h) => {
+      return sum + (h.current_value ?? 0);
+    }, 0) ?? 0;
     const totalValue = portfolio.cash_balance + holdingsValue;
     const totalGainLoss = totalValue - portfolio.initial_capital;
     const totalGainLossPercent = (totalGainLoss / portfolio.initial_capital) * 100;
