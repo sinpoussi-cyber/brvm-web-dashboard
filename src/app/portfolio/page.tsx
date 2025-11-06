@@ -27,7 +27,8 @@ export default function PortfolioPage() {
   async function addPosition() {
     if (!sym || qty <= 0) return;
     const q = await fetchQuote(sym);
-    setPositions(p => [...p, { symbol: sym, qty, price: q.price || 0 }]);
+    const price = q && typeof q.price === 'number' ? q.price : 0;
+    setPositions(p => [...p, { symbol: sym, qty, price }]);
     setQty(0);
   }
   function closePosition(i: number) {
