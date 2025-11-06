@@ -14,19 +14,14 @@ export const updateSession = async (request: NextRequest) => {
     supabaseKey!,
     {
       cookies: {
-        getAll() {
-          return request.cookies.getAll();
+        get(name: string) {
+          return request.cookies.get(name)?.value;
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
+        set(name: string, value: string, options?: CookieOptions) {
+          supabaseResponse.cookies.set({ name, value, ...options });
+        },
+        remove(name: string, options?: CookieOptions) {
+          supabaseResponse.cookies.set({ name, value: '', maxAge: 0, ...options });
         },
       },
     }
@@ -45,7 +40,7 @@ export const updateSession = async (request: NextRequest) => {
   // 1. Pass the request in it, like so:
   //    const myNewResponse = NextResponse.next({ request })
   // 2. Copy over the cookies, like so:
-  //    myNewResponse.cookies.setAll(supabaseResponse.cookies.getAll())
+  //    supabaseResponse.cookies.getAll().forEach(cookie => myNewResponse.cookies.set(cookie))
   // 3. Change the myNewResponse object to fit your needs, but avoid changing
   //    the cookies!
   // 4. Finally:
