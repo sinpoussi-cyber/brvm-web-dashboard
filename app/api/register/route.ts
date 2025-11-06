@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { signupPublicUser } from '@/lib/supabase';
+import { signupPublicUser } from '@/src/lib/supabase';
 
 export async function POST(req: Request) {
   const fd = await req.formData();
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   };
 
   // ATTENTION: nécessite une policy RLS insert autorisée pour le rôle anon sur table users
-   try {
+  try {
     await signupPublicUser(payload as any);
     return NextResponse.json({ ok: true });
   } catch (error: any) {
