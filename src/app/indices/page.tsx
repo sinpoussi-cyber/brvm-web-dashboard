@@ -1,6 +1,6 @@
 // src/app/indices/page.tsx
 import React from 'react';
-import { fetchIndexLast20d, fetchIndexMonthlyAvg10m } from '@/lib/supabase';
+import { fetchIndexLast20d, fetchIndexMonthlyAvg10m } from '@/src/lib/supabase';
 import LineBlock from '@/components/LineBlock';
 
 async function loadIndex(index: 'composite'|'brvm_30'|'prestige'|'croissance') {
