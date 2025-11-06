@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Search, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, Minus, Building2 } from 'lucide-react';
 
 interface Company {
   id: number;
@@ -26,6 +26,9 @@ export default function CompaniesPage() {
   async function fetchCompanies() {
     try {
       const response = await fetch('/api/companies/list');
+      if (!response.ok) {
+        throw new Error('Erreur lors du chargement');
+      }
       const data = await response.json();
       setCompanies(data);
     } catch (error) {
@@ -81,11 +84,14 @@ export default function CompaniesPage() {
       <div className="container mx-auto px-4">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Sociétés Cotées à la BRVM
-          </h1>
-          <p className="text-gray-600">
-            {companies.length} sociétés disponibles
+          <div className="flex items-center gap-3 mb-2">
+            <Building2 size={40} className="text-blue-600" />
+            <h1 className="text-4xl font-bold text-gray-900">
+              Sociétés Cotées à la BRVM
+            </h1>
+          </div>
+          <p className="text-gray-600 text-lg">
+            {companies.length} sociétés disponibles • Bourse Régionale des Valeurs Mobilières
           </p>
         </div>
 
@@ -110,10 +116,10 @@ export default function CompaniesPage() {
               onChange={(e) => setSectorFilter(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="all">Tous les secteurs</option>
+              <option value="all">Tous les secteurs ({companies.length})</option>
               {sectors.filter(s => s !== 'all').map((sector) => (
                 <option key={sector} value={sector}>
-                  {sector}
+                  {sector} ({companies.filter(c => c.sector === sector).length})
                 </option>
               ))}
             </select>
@@ -123,9 +129,19 @@ export default function CompaniesPage() {
         {/* Companies Grid */}
         {filteredCompanies.length === 0 ? (
           <div className="bg-white rounded-lg shadow p-12 text-center">
+            <Building2 size={64} className="mx-auto text-gray-300 mb-4" />
             <p className="text-gray-500 text-lg">
               Aucune société ne correspond à votre recherche
             </p>
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setSectorFilter('all');
+              }}
+              className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Réinitialiser les filtres
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -133,18 +149,20 @@ export default function CompaniesPage() {
               <Link
                 key={company.id}
                 href={`/companies/${company.symbol}`}
-                className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6 group"
+                className="bg-white rounded-lg shadow hover:shadow-xl transition-all p-6 group border border-transparent hover:border-blue-200"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <h3 className="text-2xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
                       {company.symbol}
                     </h3>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-gray-600 mt-1 line-clamp-2">
                       {company.name}
                     </p>
                   </div>
-                  {getVariationIcon(company.variation)}
+                  <div className="flex-shrink-0">
+                    {getVariationIcon(company.variation)}
+                  </div>
                 </div>
 
                 {company.sector && (
@@ -157,13 +175,15 @@ export default function CompaniesPage() {
 
                 <div className="flex items-end justify-between pt-4 border-t border-gray-100">
                   <div>
-                    {company.latest_price && (
+                    {company.latest_price ? (
                       <>
                         <p className="text-xs text-gray-500">Dernier cours</p>
                         <p className="text-xl font-bold text-gray-900">
                           {company.latest_price.toLocaleString('fr-FR')} FCFA
                         </p>
                       </>
+                    ) : (
+                      <p className="text-sm text-gray-400">Prix non disponible</p>
                     )}
                   </div>
                   {company.variation !== undefined && (
