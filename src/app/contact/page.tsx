@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { sendContactMessage } from '@/lib/supabase';
+import { sendContactMessage } from '@/src/lib/supabase';
 
 export default function ContactPage() {
   const [state, setState] = useState<{ok?: string; err?: string}>({});
