@@ -1,6 +1,6 @@
 // src/app/page.tsx
 import { fetchMarketOverview, fetchTopGainers, fetchTopLosers } from '@/lib/api';
-import { fetchCompositeLast20d } from '@/lib/supabase';
+import { fetchCompositeLast20d } from '@/src/lib/supabase';
 import { KpiCard } from '@/components/KpiCard';
 import { IndexCard } from '@/components/IndexCard';
 import { TopMovers } from '@/components/TopMovers';
