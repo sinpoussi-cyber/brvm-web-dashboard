@@ -40,10 +40,23 @@ export default function LogsViewer({ logs, title = 'Logs' }: LogsViewerProps) {
     }
   };
 
+  const getLevelBadge = (level: string) => {
+    switch (level) {
+      case 'error':
+        return 'bg-red-100 text-red-800';
+      case 'warning':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'success':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-blue-100 text-blue-800';
+    }
+  };
+
   const downloadLogs = () => {
     const dataStr = JSON.stringify(logs, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    const exportFileDefaultName = `logs_${new Date().toISOString()}.json`;
+    const exportFileDefaultName = `logs_${new Date().toISOString().split('T')[0]}.json`;
     
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
@@ -140,20 +153,27 @@ export default function LogsViewer({ logs, title = 'Logs' }: LogsViewerProps) {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-semibold uppercase">
+                        <span className={`text-xs font-semibold uppercase px-2 py-1 rounded ${getLevelBadge(log.level)}`}>
                           {log.level}
                         </span>
                         <span className="text-xs text-gray-500">
-                          {new Date(log.timestamp).toLocaleString('fr-FR')}
+                          {new Date(log.timestamp).toLocaleString('fr-FR', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                          })}
                         </span>
                       </div>
                       <p className="text-sm font-medium">{log.message}</p>
                       {log.details && (
                         <details className="mt-2">
-                          <summary className="text-xs cursor-pointer hover:underline">
+                          <summary className="text-xs cursor-pointer hover:underline text-gray-700 font-medium">
                             Voir les détails
                           </summary>
-                          <pre className="mt-2 text-xs bg-gray-50 p-2 rounded overflow-x-auto">
+                          <pre className="mt-2 text-xs bg-gray-50 p-2 rounded overflow-x-auto border border-gray-200">
                             {JSON.stringify(log.details, null, 2)}
                           </pre>
                         </details>
