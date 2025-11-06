@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { signupPublicUser } from '@/lib/supabase';
+import { signupPublicUser } from '@/src/lib/supabase';
 
 export default function SignupForm() {
   const [loading, setLoading] = useState(false);
