@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-interface TechnicalSummary {
+interface TechnicalSummaryData {
   bullish_signals: number;
   bearish_signals: number;
   neutral_signals: number;
@@ -13,15 +13,26 @@ interface TechnicalSummary {
   last_update: string;
 }
 
-export default function TechnicalSummary() {
-  const [summary, setSummary] = useState<TechnicalSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+type TechnicalSummaryProps = {
+  data?: TechnicalSummaryData | null;
+};
+
+export default function TechnicalSummary({ data }: TechnicalSummaryProps) {
+  const [summary, setSummary] = useState<TechnicalSummaryData | null>(data ?? null);
+  const [loading, setLoading] = useState(!data);
   
   useEffect(() => {
+    if (data) {
+      setSummary(data);
+      setLoading(false);
+      return;
+    }
+    
     fetchSummary();
-  }, []);
+  }, [data]);
   
   async function fetchSummary() {
+    if (data) return;
     try {
       const response = await fetch('/api/technical-summary');
       const data = await response.json();
