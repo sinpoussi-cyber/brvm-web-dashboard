@@ -1,22 +1,57 @@
-import { LogsViewer } from '@/components/LogsViewer';
-import { sampleDeploymentLogs } from '@/data/sampleDeploymentLogs';
+'use client';
 
-export const metadata = {
-  title: 'Logs de déploiement',
-  description: 'Consultez un exemple de logs Vercel avec recherche intégrée.',
-};
+import { useState } from 'react';
+import LogsViewer from '@/src/components/LogsViewer';
+
+// Données de logs d'exemple
+const sampleDeploymentLogs = [
+  {
+    id: '1',
+    timestamp: new Date().toISOString(),
+    level: 'info' as const,
+    message: 'Déploiement démarré',
+    details: { version: '1.0.0', environment: 'production' }
+  },
+  {
+    id: '2',
+    timestamp: new Date().toISOString(),
+    level: 'success' as const,
+    message: 'Build terminé avec succès',
+    details: { duration: '45s', size: '2.3 MB' }
+  },
+  {
+    id: '3',
+    timestamp: new Date().toISOString(),
+    level: 'warning' as const,
+    message: 'Avertissement: Dépendance obsolète détectée',
+    details: { package: 'old-package', version: '1.0.0' }
+  },
+  {
+    id: '4',
+    timestamp: new Date().toISOString(),
+    level: 'info' as const,
+    message: 'Déploiement en cours...',
+    details: { progress: '50%' }
+  },
+  {
+    id: '5',
+    timestamp: new Date().toISOString(),
+    level: 'success' as const,
+    message: 'Déploiement réussi!',
+    details: { url: 'https://brvm-analysis.vercel.app' }
+  }
+];
 
 export default function LogsPage() {
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold">Suivi des déploiements</h1>
-        <p className="text-gray-600">
-          Utilisez le champ de recherche pour trouver rapidement des étapes spécifiques dans les logs d'une build Vercel.
-        </p>
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="container mx-auto px-4">
+        <h1 className="text-4xl font-bold text-gray-900 mb-8">
+          Logs de Déploiement
+        </h1>
+        
+        <LogsViewer logs={sampleDeploymentLogs} title="Logs de Déploiement" />
       </div>
-
-      <LogsViewer logs={sampleDeploymentLogs} />
     </div>
   );
 }
