@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { createEduArticle, listEduArticles } from '@/lib/supabase';
+import { createEduArticle, listEduArticles } from '@/src/lib/supabase';
 
 type Art = { id: string; title: string; content: string; created_at: string };
 
