@@ -27,7 +27,8 @@ export async function GET() {
         hold_recommendations: 0,
         avg_per: 0,
         avg_dividend_yield: 0,
-        top_performers: []
+        top_performers: [],
+        last_report_date: null
       });
     }
     
@@ -67,6 +68,11 @@ export async function GET() {
         recommendation: d.recommendation
       }));
     
+    const lastReportDate = fundamentalData
+      .map((row) => row.report_date)
+      .filter(Boolean)
+      .sort((a, b) => new Date(b as string).getTime() - new Date(a as string).getTime())[0] ?? null;
+
     const summary = {
       total_companies: fundamentalData.length,
       buy_recommendations: buyRecs.length,
@@ -74,7 +80,8 @@ export async function GET() {
       hold_recommendations: holdRecs.length,
       avg_per: avgPER,
       avg_dividend_yield: avgDividend,
-      top_performers: topPerformers
+      top_performers: topPerformers,
+      last_report_date: lastReportDate
     };
     
     return NextResponse.json(summary);
