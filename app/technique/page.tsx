@@ -59,6 +59,7 @@ export default function TechniquePage() {
   const [loading, setLoading] = useState(false);
   const [marketSummary, setMarketSummary] = useState<MarketSummary | null>(null);
   const [companies, setCompanies] = useState<Array<{symbol: string, name: string}>>([]);
+  const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
     fetchMarketSummary();
@@ -67,7 +68,12 @@ export default function TechniquePage() {
   
   async function fetchMarketSummary() {
     try {
-      const response = await fetch('/api/technical-market-summary');
+      const response = await fetch('/api/technical-market-summary', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
       const data = await response.json();
       setMarketSummary(data);
     } catch (error) {
@@ -77,9 +83,16 @@ export default function TechniquePage() {
   
   async function fetchCompanies() {
     try {
-      const response = await fetch('/api/companies/list');
+      const response = await fetch('/api/companies/list', {
+        cache: 'no-store',
+      });
       const data = await response.json();
       setCompanies(data);
+      if (data && data.length && !selectedSymbol) {
+        const defaultSymbol = data[0].symbol;
+        setSelectedSymbol(defaultSymbol);
+        handleLoad(defaultSymbol);
+      }
     } catch (error) {
       console.error('Erreur:', error);
       // Liste de secours
@@ -93,29 +106,35 @@ export default function TechniquePage() {
     }
   }
   
-  async function handleValidate() {
-    if (!selectedSymbol) {
-      alert('Veuillez sélectionner une société');
+  async function handleLoad(symbolToLoad?: string) {
+    const target = (symbolToLoad ?? selectedSymbol).trim().toUpperCase();
+    if (!target) {
+      setError('Veuillez sélectionner une société.');
       return;
     }
-    
+    setError(null);
     setLoading(true);
     
     try {
-      const response = await fetch(`/api/companies/${selectedSymbol}/technical-analysis`);
+      const response = await fetch(`/api/companies/${target}/technical-analysis`, {
+        cache: 'no-store',
+      });
       
       if (!response.ok) {
         throw new Error('Données non disponibles');
       }
-      
       const data = await response.json();
       setAnalysis(data);
     } catch (error) {
-      console.error('Erreur:', error);
-      alert('Erreur lors du chargement de l\'analyse technique');
-    } finally {
+      } catch (err: any) {
+      console.error('Erreur:', err);
+      setError(err.message ?? 'Erreur lors du chargement de l\'analyse technique');
       setLoading(false);
     }
+  }
+
+  function handleValidate() {
+    handleLoad();
   }
   
   const getSentimentColor = (sentiment: string) => {
@@ -224,17 +243,17 @@ export default function TechniquePage() {
                 Sélectionner une société
               </label>
               <select
-                value={selectedSymbol}
-                onChange={(e) => setSelectedSymbol(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">-- Choisir une société --</option>
-                {companies.map((company) => (
-                  <option key={company.symbol} value={company.symbol}>
-                    {company.symbol} - {company.name}
-                  </option>
-                ))}
-              </select>
+              value={selectedSymbol}
+              onChange={(e) => setSelectedSymbol(e.target.value.toUpperCase())}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">-- Choisir une société --</option>
+              {companies.map((company) => (
+                <option key={company.symbol} value={company.symbol}>
+                  {company.symbol} - {company.name}
+                </option>
+              ))}
+            </select>
             </div>
             <div className="flex items-end">
               <button
@@ -246,6 +265,7 @@ export default function TechniquePage() {
               </button>
             </div>
           </div>
+          {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
         </div>
         
         {/* Résultats de l'analyse */}
