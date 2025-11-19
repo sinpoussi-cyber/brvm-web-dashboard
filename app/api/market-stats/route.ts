@@ -22,25 +22,39 @@ export async function GET() {
       return NextResponse.json({ error: 'Aucune statistique disponible' }, { status: 404 });
     }
     
-    return NextResponse.json({
-      extraction_date: data.extraction_date,
-      created_at: data.created_at,
-      capitalisation_globale: data.capitalisation_globale,
-      volume_moyen_annuel: data.volume_moyen_annuel,
-      valeur_moyenne_annuelle: data.valeur_moyenne_annuelle,
-      variation_journaliere_capitalisation_globale: data.variation_journaliere_capitalisation_globale,
-      variation_ytd_capitalisation_globale: data.variation_ytd_capitalisation_globale,
-      variation_journaliere_volume_moyen_annuel: data.variation_journaliere_volume_moyen_annuel,
-      variation_ytd_volume_moyen_annuel: data.variation_ytd_volume_moyen_annuel,
-      variation_journaliere_valeur_moyenne_annuelle: data.variation_journaliere_valeur_moyenne_annuelle,
-      variation_ytd_valeur_moyenne_annuelle: data.variation_ytd_valeur_moyenne_annuelle,
-      // Formater la date pour l'affichage
-      formatted_date: new Date(data.extraction_date).toLocaleDateString('fr-FR', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })
-    });
+    const toNumber = (value: unknown) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    return NextResponse.json(
+      {
+        extraction_date: data.extraction_date,
+        created_at: data.created_at,
+        capitalisation_globale: toNumber(data.capitalisation_globale),
+        volume_moyen_annuel: toNumber(data.volume_moyen_annuel),
+        valeur_moyenne_annuelle: toNumber(data.valeur_moyenne_annuelle),
+        variation_journaliere_capitalisation_globale: toNumber(data.variation_journaliere_capitalisation_globale),
+        variation_ytd_capitalisation_globale: toNumber(data.variation_ytd_capitalisation_globale),
+        variation_journaliere_volume_moyen_annuel: toNumber(data.variation_journaliere_volume_moyen_annuel),
+        variation_ytd_volume_moyen_annuel: toNumber(data.variation_ytd_volume_moyen_annuel),
+        variation_journaliere_valeur_moyenne_annuelle: toNumber(data.variation_journaliere_valeur_moyenne_annuelle),
+        variation_ytd_valeur_moyenne_annuelle: toNumber(data.variation_ytd_valeur_moyenne_annuelle),
+        // Formater la date pour l'affichage
+        formatted_date: data.extraction_date
+          ? new Date(data.extraction_date).toLocaleDateString('fr-FR', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            })
+          : '—'
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      }
+    );
   } catch (error) {
     console.error('Erreur serveur:', error);
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
