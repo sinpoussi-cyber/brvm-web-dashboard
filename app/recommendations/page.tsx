@@ -18,15 +18,20 @@ function isSell(value?: string | null) {
 
 export default function RecommendationsPage() {
   const [payload, setPayload] = useState<RecommendationPayload | null>(null);
-  
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     (async () => {
       try {
         const data = await getRecommendations();
         setPayload(data);
+        setError(null);
       } catch (error) {
         console.error('Erreur chargement recommandations', error);
         setPayload({ items: [], metadata: { fetched_at: new Date().toISOString(), buy_count: 0, sell_count: 0 } });
+        setError('Impossible de charger les données du jour. Affichage des valeurs par défaut.');
+      } finally {
+        setLoading(false);
       }
     })();
   }, []);
@@ -78,6 +83,20 @@ export default function RecommendationsPage() {
     );
   };
 
+  if (loading && !payload) {
+    return (
+      <div className="p-6">
+        <Card>
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 bg-gray-200 rounded w-1/3" />
+            <div className="h-4 bg-gray-200 rounded w-1/4" />
+            <div className="h-32 bg-gray-200 rounded" />
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6">
       <Card>
@@ -102,6 +121,11 @@ export default function RecommendationsPage() {
             </div>
           )}
         </div>
+        {error && (
+          <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-3 mb-4">
+            {error}
+          </div>
+        )}
         <div className="grid md:grid-cols-2 gap-6">
           <div>
             <h2 className="font-semibold text-green-600 mb-2">Top 10 — Actions à acheter</h2>
