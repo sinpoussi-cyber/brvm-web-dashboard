@@ -56,7 +56,11 @@ export async function GET() {
       total_stocks: summaryData.length
     };
     
-    return NextResponse.json(summary);
+    return NextResponse.json(summary, {
+      headers: {
+        'Cache-Control': 'no-store',
+      },
+    });
   } catch (error) {
     console.error('Erreur serveur:', error);
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
