@@ -1,7 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from 'recharts';
 
 interface Portfolio {
   id: string;
@@ -12,6 +20,8 @@ interface Portfolio {
   gain_loss: number;
   gain_loss_percent: number;
   holdings_value: number;
+  history?: Array<{ date: string; value: number }>;
+  created_at?: string;
   holdings: Array<{
     id: string;
     company_id: number;
@@ -29,10 +39,11 @@ interface Portfolio {
 }
 
 export default function TrainingPage() {
-  const router = useRouter();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [loading, setLoading] = useState(true);
   const [budget, setBudget] = useState(1000000);
+  const [companies, setCompanies] = useState<Array<{ symbol: string; name: string }>>([]);
+  const [companiesLoading, setCompaniesLoading] = useState(false);
   
   // Transaction form
   const [selectedStock, setSelectedStock] = useState('');
@@ -40,31 +51,23 @@ export default function TrainingPage() {
   const [action, setAction] = useState<'buy' | 'sell'>('buy');
   const [transactionLoading, setTransactionLoading] = useState(false);
   
-  const companies = [
-    { symbol: 'TTRC', name: 'Total Côte d\'Ivoire' },
-    { symbol: 'SNTS', name: 'Sonatel' },
-    { symbol: 'SGBC', name: 'SGBCI' },
-    { symbol: 'BOAC', name: 'BOA Côte d\'Ivoire' },
-    { symbol: 'SIVC', name: 'SIVOM' },
-    { symbol: 'ETIT', name: 'Ecobank Transnational' },
-  ];
-  
   useEffect(() => {
     loadPortfolio();
+    loadCompanies();
   }, []);
   
   async function loadPortfolio() {
     try {
       const response = await fetch('/api/training/portfolio');
-      const data = await response.json();
-      
-      if (data.portfolio) {
-        setPortfolio(data);
-      } else {
+      if (!response.ok) {
         setPortfolio(null);
+        return;
       }
+      const data = await response.json();
+      setPortfolio(data.portfolio ?? null);
     } catch (error) {
       console.error('Erreur:', error);
+      setPortfolio(null);
     } finally {
       setLoading(false);
     }
@@ -101,6 +104,26 @@ export default function TrainingPage() {
       alert('Erreur lors de la création du portefeuille');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadCompanies() {
+    try {
+      setCompaniesLoading(true);
+      const response = await fetch('/api/companies/list', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Liste indisponible');
+      const data = await response.json();
+      setCompanies(data);
+    } catch (error) {
+      console.error('Erreur chargement sociétés training:', error);
+      setCompanies([
+        { symbol: 'TTRC', name: 'Total Côte d\'Ivoire' },
+        { symbol: 'SNTS', name: 'Sonatel' },
+        { symbol: 'SGBC', name: 'SGBCI' },
+        { symbol: 'BOAC', name: 'BOA Côte d\'Ivoire' },
+      ]);
+    } finally {
+      setCompaniesLoading(false);
     }
   }
   
@@ -303,7 +326,7 @@ export default function TrainingPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">Société</label>
               <select
                 value={selectedStock}
-                onChange={(e) => setSelectedStock(e.target.value)}
+                onChange={(e) => setSelectedStock(e.target.value.toUpperCase())}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Sélectionner...</option>
@@ -313,6 +336,7 @@ export default function TrainingPage() {
                   </option>
                 ))}
               </select>
+              {companiesLoading && <p className="text-xs text-gray-400 mt-1">Chargement des sociétés…</p>}
             </div>
             
             <div>
@@ -341,6 +365,38 @@ export default function TrainingPage() {
             </div>
           </div>
         </div>
+
+        {portfolio?.history && portfolio.history.length > 0 && (
+          <div className="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Évolution du portefeuille</h2>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={portfolio.history} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="portfolioValue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.45} />
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={(value) => new Date(value).toLocaleDateString('fr-FR', { month: 'short', day: '2-digit' })}
+                  />
+                  <YAxis
+                    tickFormatter={(value) => `${Math.round(Number(value)).toLocaleString('fr-FR')}`}
+                    width={90}
+                  />
+                  <Tooltip
+                    formatter={(value: number) => `${Math.round(value).toLocaleString('fr-FR')} FCFA`}
+                    labelFormatter={(label) => new Date(label).toLocaleString('fr-FR')}
+                  />
+                  <Area type="monotone" dataKey="value" stroke="#2563eb" fill="url(#portfolioValue)" name="Valeur" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
         
         {/* Liste des positions */}
         <div className="bg-white p-6 rounded-lg shadow">
