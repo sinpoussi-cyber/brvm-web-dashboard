@@ -25,6 +25,7 @@ type PortfolioResponse = {
   gain_loss?: number | null;
   gain_loss_percent?: number | null;
   holdings?: PortfolioHolding[];
+  created_at?: string;
   [key: string]: unknown;
 };
 
@@ -96,13 +97,66 @@ export async function GET() {
     const totalValue = portfolio.cash_balance + holdingsValue;
     const totalGainLoss = totalValue - portfolio.initial_capital;
     const totalGainLossPercent = (totalGainLoss / portfolio.initial_capital) * 100;
+
+    // Construire l'historique d'évolution du portefeuille
+    const { data: transactions } = await supabase
+      .from('transactions')
+      .select('company_id, transaction_type, quantity, price, net_amount, total_amount, created_at')
+      .eq('portfolio_id', portfolio.id)
+      .order('created_at', { ascending: true });
+
+    const history: Array<{ date: string; value: number }> = [];
+    if (portfolio.created_at) {
+      history.push({ date: portfolio.created_at, value: portfolio.initial_capital });
+    }
+    if (transactions?.length) {
+      let cashCursor = portfolio.initial_capital;
+      const positionState = new Map<string, { quantity: number; lastPrice: number }>();
+
+      for (const tx of transactions) {
+        const qty = Number(tx.quantity ?? 0);
+        const basePrice = Number(
+          tx.price ?? (tx.total_amount && qty ? Number(tx.total_amount) / qty : 0)
+        );
+        const netAmount = Number(tx.net_amount ?? tx.total_amount ?? basePrice * qty);
+        const key = String(tx.company_id ?? '');
+        const position = positionState.get(key) ?? { quantity: 0, lastPrice: basePrice };
+
+        if (tx.transaction_type === 'buy') {
+          cashCursor -= netAmount;
+          position.quantity += qty;
+          position.lastPrice = basePrice;
+          positionState.set(key, position);
+        } else if (tx.transaction_type === 'sell') {
+          cashCursor += netAmount;
+          position.quantity = Math.max(0, position.quantity - qty);
+          position.lastPrice = basePrice;
+          positionState.set(key, position);
+        }
+
+        const holdingsCurrentValue = Array.from(positionState.values()).reduce((sum, pos) => {
+          return sum + pos.quantity * pos.lastPrice;
+        }, 0);
+        history.push({
+          date: tx.created_at ?? new Date().toISOString(),
+          value: Math.max(0, cashCursor + holdingsCurrentValue),
+        });
+      }
+    }
+    if (!history.length) {
+      history.push({ date: new Date().toISOString(), value: totalValue });
+    }
     
     return NextResponse.json({
-      ...portfolio,
-      current_value: totalValue,
-      gain_loss: totalGainLoss,
-      gain_loss_percent: totalGainLossPercent,
-      holdings_value: holdingsValue
+      portfolio: {
+        ...portfolio,
+        current_value: totalValue,
+        gain_loss: totalGainLoss,
+        gain_loss_percent: totalGainLossPercent,
+        holdings_value: holdingsValue,
+        history,
+      }
+      
     });
   } catch (error) {
     console.error('Erreur serveur:', error);
