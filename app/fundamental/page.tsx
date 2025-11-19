@@ -41,13 +41,21 @@ export default function FundamentalPage() {
     })();
   }, []); // eslint-disable-line
 
-  async function loadFundamentals() {
-    if (!symbol) return;
+  useEffect(() => {
+    if (symbol) {
+      loadFundamentals(symbol);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol]);
+
+  async function loadFundamentals(targetSymbol?: string) {
+    const activeSymbol = targetSymbol ?? symbol;
+    if (!activeSymbol) return;
     setLoading(true);
     try {
-      const fund = await fetchFundamentalSummary(symbol);
+      const fund = await fetchFundamentalSummary(activeSymbol);
       setSummary(fund);
-      const ratios = await fetchFundamentalMetrics(symbol);
+      const ratios = await fetchFundamentalMetrics(activeSymbol);
       setMetrics(ratios);
     } catch (error) {
       console.error(error);
@@ -86,19 +94,17 @@ export default function FundamentalPage() {
             </select>
           </div>
           <button
-            onClick={loadFundamentals}
+            onClick={() => loadFundamentals(symbol)}
             className="h-[46px] px-5 rounded-xl bg-blue-600 text-white font-medium"
             disabled={!symbol || loading}
           >
-            {loading ? 'Chargement…' : 'Valider'}
+            {loading ? 'Actualisation…' : 'Actualiser'}
           </button>
         </div>
       </Card>
 
       {!summary ? (
-        <div className="text-gray-500 text-sm">
-          Sélectionnez une société et cliquez sur <b>Valider</b>.
-        </div>
+        <div className="text-gray-500 text-sm">Aucune analyse disponible pour cette société.</div>
       ) : (
         <>
           <Card>
@@ -116,7 +122,15 @@ export default function FundamentalPage() {
             )}
           </Card>
 
-          {metrics ? (
+          {loading ? (
+            <Card>
+              <div className="animate-pulse grid md:grid-cols-3 gap-4 text-sm">
+                {[...Array(6)].map((_, idx) => (
+                  <div key={idx} className="h-16 bg-gray-200 rounded" />
+                ))}
+              </div>
+            </Card>
+          ) : metrics ? (
             <Card>
               <div className="font-semibold text-lg mb-2">Ratios financiers clés</div>
               <div className="grid md:grid-cols-3 gap-4 text-sm">
