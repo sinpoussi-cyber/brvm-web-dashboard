@@ -23,33 +23,48 @@ export async function GET() {
     if (!latestIndicator) {
       return NextResponse.json({ error: 'Aucun indicateur disponible' }, { status: 404 });
     }
-    
-    // S'assurer que brvm_composite est inclus
+
+    const toNumber = (value: unknown, fallback?: unknown) => {
+      const parsed = Number(value ?? fallback);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    // S'assurer que brvm_principal est exposé et que toutes les valeurs sont numériques
     const indicators = {
-      brvm_composite: latestIndicator.brvm_composite,
-      brvm_30: latestIndicator.brvm_30,
-      brvm_prestige: latestIndicator.brvm_prestige,
-      brvm_croissance: latestIndicator.brvm_croissance,
+      brvm_composite: toNumber(latestIndicator.brvm_composite),
+      brvm_30: toNumber(latestIndicator.brvm_30),
+      brvm_prestige: toNumber(latestIndicator.brvm_prestige),
+      brvm_principal: toNumber(latestIndicator.brvm_principal, latestIndicator.brvm_croissance),
       
       // Variations journalières
-      variation_journaliere_brvm_composite: latestIndicator.variation_journaliere_brvm_composite,
-      variation_journaliere_brvm_30: latestIndicator.variation_journaliere_brvm_30,
-      variation_journaliere_brvm_prestige: latestIndicator.variation_journaliere_brvm_prestige,
-      variation_journaliere_brvm_croissance: latestIndicator.variation_journaliere_brvm_croissance,
+      variation_journaliere_brvm_composite: toNumber(latestIndicator.variation_journaliere_brvm_composite),
+      variation_journaliere_brvm_30: toNumber(latestIndicator.variation_journaliere_brvm_30),
+      variation_journaliere_brvm_prestige: toNumber(latestIndicator.variation_journaliere_brvm_prestige),
+      variation_journaliere_brvm_principal: toNumber(
+        latestIndicator.variation_journaliere_brvm_principal,
+        latestIndicator.variation_journaliere_brvm_croissance,
+      ),
       
       // Variations YTD
-      variation_ytd_brvm_composite: latestIndicator.variation_ytd_brvm_composite,
-      variation_ytd_brvm_30: latestIndicator.variation_ytd_brvm_30,
-      variation_ytd_brvm_prestige: latestIndicator.variation_ytd_brvm_prestige,
-      variation_ytd_brvm_croissance: latestIndicator.variation_ytd_brvm_croissance,
+      variation_ytd_brvm_composite: toNumber(latestIndicator.variation_ytd_brvm_composite),
+      variation_ytd_brvm_30: toNumber(latestIndicator.variation_ytd_brvm_30),
+      variation_ytd_brvm_prestige: toNumber(latestIndicator.variation_ytd_brvm_prestige),
+      variation_ytd_brvm_principal: toNumber(
+        latestIndicator.variation_ytd_brvm_principal,
+        latestIndicator.variation_ytd_brvm_croissance,
+      ),
       
       extraction_date: latestIndicator.extraction_date,
-      capitalisation_globale: latestIndicator.capitalisation_globale,
-      volume_moyen_annuel: latestIndicator.volume_moyen_annuel,
-      valeur_moyenne_annuelle: latestIndicator.valeur_moyenne_annuelle,
+       capitalisation_globale: toNumber(latestIndicator.capitalisation_globale),
+      volume_moyen_annuel: toNumber(latestIndicator.volume_moyen_annuel),
+      valeur_moyenne_annuelle: toNumber(latestIndicator.valeur_moyenne_annuelle),
     };
-    
-    return NextResponse.json(indicators);
+
+    return NextResponse.json(indicators, {
+      headers: {
+        'Cache-Control': 'no-store',
+      },
+    });
   } catch (error) {
     console.error('Erreur serveur:', error);
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
