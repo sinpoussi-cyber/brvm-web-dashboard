@@ -7,8 +7,9 @@ interface FundamentalSummary {
   buy_recommendations: number;
   sell_recommendations: number;
   hold_recommendations: number;
-  avg_per: number;
-  avg_dividend_yield: number;
+  avg_per?: number;
+  avg_dividend_yield?: number;
+  last_report_date?: string | null;
   top_performers: Array<{
     symbol: string;
     company_name: string;
@@ -29,7 +30,12 @@ export default function FundamentalSummary() {
   
   async function fetchSummary() {
     try {
-      const response = await fetch('/api/fundamental-summary');
+      const response = await fetch('/api/fundamental-summary', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
       const data = await response.json();
       setSummary(data);
     } catch (error) {
@@ -56,9 +62,21 @@ export default function FundamentalSummary() {
   
   return (
     <div className="bg-white p-6 rounded-lg shadow">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">
-        Résumé Analyse Fondamentale
-      </h2>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">
+          Résumé Analyse Fondamentale
+        </h2>
+        {summary.last_report_date && (
+          <div className="text-sm text-gray-500">
+            Dernière mise à jour :{' '}
+            {new Date(summary.last_report_date).toLocaleDateString('fr-FR', {
+              day: '2-digit',
+              month: 'long',
+              year: 'numeric'
+            })}
+          </div>
+        )}
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
@@ -95,22 +113,6 @@ export default function FundamentalSummary() {
             </div>
             <div className="text-4xl">📉</div>
           </div>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <p className="text-sm text-gray-600 mb-1">PER Moyen du Marché</p>
-          <p className="text-2xl font-bold text-gray-900">
-            {summary.avg_per.toFixed(2)}
-          </p>
-        </div>
-        
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <p className="text-sm text-gray-600 mb-1">Rendement Dividende Moyen</p>
-          <p className="text-2xl font-bold text-gray-900">
-            {summary.avg_dividend_yield.toFixed(2)}%
-          </p>
         </div>
       </div>
       
