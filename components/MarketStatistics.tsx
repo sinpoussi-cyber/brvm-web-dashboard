@@ -25,7 +25,12 @@ export default function MarketStatistics() {
   
   async function fetchStats() {
     try {
-      const response = await fetch('/api/market-stats');
+      const response = await fetch('/api/market-stats', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
       const data = await response.json();
       setStats(data);
     } catch (error) {
@@ -66,8 +71,9 @@ export default function MarketStatistics() {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Statistiques du Marché</h2>
         <div className="text-right">
-          <p className="text-xs text-gray-500">Mise à jour</p>
+          <p className="text-xs text-gray-500">Mise à jour Supabase</p>
           <p className="text-sm font-medium text-gray-700">{stats.formatted_date}</p>
+          <p className="text-[11px] text-gray-400">Synchronisation quotidienne à 04h GMT</p>
         </div>
       </div>
       
