@@ -34,7 +34,12 @@ export default function TechnicalSummary({ data }: TechnicalSummaryProps) {
   async function fetchSummary() {
     if (data) return;
     try {
-      const response = await fetch('/api/technical-summary');
+      const response = await fetch('/api/technical-summary', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
       const data = await response.json();
       setSummary(data);
     } catch (error) {
